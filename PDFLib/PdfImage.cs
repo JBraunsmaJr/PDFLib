@@ -81,22 +81,26 @@ public class PdfImage : PdfObject, IDisposable
 
     public static PdfImage FromFile(string filePath)
     {
-        using var codec = SKCodec.Create(filePath) ?? throw new Exception("Failed to load image: " + filePath);
-        var info = codec.Info;
-        var width = info.Width;
-        var height = info.Height;
+        using var fs = File.OpenRead(filePath);
+        return FromStream(fs);
+    }
 
-        // Ensure we get RGB888
-        var bitmapInfo = new SKImageInfo(width, height, SKColorType.Rgb888x, SKAlphaType.Opaque);
-        using var bitmap = new SKBitmap(bitmapInfo);
-        codec.GetPixels(bitmap.Info, bitmap.GetPixels());
+    public static PdfImage FromStream(Stream stream)
+    {
+        using var bitmap = SKBitmap.Decode(stream) ?? throw new Exception("Failed to load image from stream");
+        var width = bitmap.Width;
+        var height = bitmap.Height;
 
         var tempFile = Path.GetTempFileName();
         using (var fs = File.Create(tempFile))
         using (var ds = new System.IO.Compression.ZLibStream(fs, System.IO.Compression.CompressionLevel.Optimal))
         {
-            var pixels = bitmap.GetPixelSpan();
-            var rowSize = width * 4; // Rgb888x has 4 bytes per pixel
+            // Ensure we are working with a known format (RGBA8888)
+            using var converted = new SKBitmap(width, height, SKColorType.Rgba8888, SKAlphaType.Opaque);
+            bitmap.CopyTo(converted);
+            
+            var pixels = converted.GetPixelSpan();
+            var rowSize = width * 4;
 
             for (var y = 0; y < height; y++)
             {
@@ -117,16 +121,15 @@ public class PdfImage : PdfObject, IDisposable
 
     public void Dispose()
     {
-        if (_isTempFile && _filePath != null && File.Exists(_filePath))
+        if (!_isTempFile || _filePath is null || !File.Exists(_filePath)) return;
+        
+        try
         {
-            try
-            {
-                File.Delete(_filePath);
-            }
-            catch
-            {
-                // Ignore cleanup errors
-            }
+            File.Delete(_filePath);
+        }
+        catch
+        {
+            // Ignore cleanup errors
         }
     }
 }

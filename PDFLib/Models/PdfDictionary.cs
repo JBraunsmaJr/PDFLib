@@ -1,12 +1,12 @@
-﻿using System.Text;
-
-namespace PDFLib.Models;
+﻿namespace PDFLib.Models;
 
 public class PdfDictionary : PdfObject
 {
     private readonly Dictionary<string, PdfObject> _dict = new();
 
     public void Add(string key, PdfObject value) => _dict[key] = value;
+
+    public PdfObject Get(string key) => _dict[key];
 
     public override void WriteTo(BinaryWriter writer)
     {

@@ -77,6 +77,11 @@ public class PdfPage
         table.Render(this, x, y);
     }
 
+    public void DrawRectangle(int x, int y, int width, int height)
+    {
+        _contentWriter.Write($"{x} {y} {width} {height} re S\n");
+    }
+
     public void Build(bool compress = false)
     {
         _contentWriter.Flush();

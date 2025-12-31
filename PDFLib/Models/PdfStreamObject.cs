@@ -5,7 +5,7 @@ namespace PDFLib.Models;
 public class PdfStreamObject : PdfObject
 {
     protected readonly PdfDictionary _dict;
-    private readonly byte[] _content;
+    protected byte[] _content;
 
     public PdfStreamObject(PdfDictionary dict, string content) : this(dict, Encoding.ASCII.GetBytes(content))
     {

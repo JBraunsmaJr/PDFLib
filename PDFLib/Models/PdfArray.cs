@@ -1,6 +1,4 @@
-﻿using System.Text;
-
-namespace PDFLib.Models;
+﻿namespace PDFLib.Models;
 
 public class PdfArray : PdfObject
 {
@@ -8,6 +6,11 @@ public class PdfArray : PdfObject
 
     public int Count => _items.Count;
     public void Add(PdfObject item) => _items.Add(item);
+
+    public PdfArray(params PdfObject[] initialItems)
+    {
+        _items.AddRange(initialItems);
+    }
 
     public override void WriteTo(BinaryWriter writer)
     {

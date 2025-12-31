@@ -1,6 +1,4 @@
-﻿using System.Text;
-
-namespace PDFLib.Models;
+﻿namespace PDFLib.Models;
 
 /// <summary>
 /// Basic escaping included
