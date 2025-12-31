@@ -146,10 +146,8 @@ public class PdfRenderer
 
     private int RenderStack(PdfDocument doc, PdfPage page, XElement element, int x, int y, int width, int pageNumber, int totalPages)
     {
-        var bgColor = element.Attribute("backgroundcolor")?.Value;
         int.TryParse(element.Attribute("padding")?.Value, out var padding);
 
-        var startY = y;
         var currentY = y - padding;
 
         foreach (var child in element.Elements())
@@ -158,18 +156,6 @@ public class PdfRenderer
         }
 
         var endY = currentY - padding;
-
-        if (bgColor != null)
-        {
-            // We need to render the background AFTER we know the height, but PDF renders top-to-bottom
-            // Actually, we can't easily render background behind if we already rendered text unless we use layers or re-order.
-            // For now, let's just accept that backgrounds might be tricky with the current one-pass approach.
-            // WAIT, I can draw the rectangle first if I knew the height.
-            // Since I don't know the height, maybe I should pre-calculate it? 
-            // Or just draw it and hope for the best (it will be ON TOP if I draw it after).
-            // Actually, the most PDF-friendly way is to draw background, then content.
-            // To do that I need to measure children first.
-        }
 
         return endY;
     }

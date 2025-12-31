@@ -95,12 +95,14 @@ public class PdfImage : PdfObject, IDisposable
         using (var fs = File.Create(tempFile))
         using (var ds = new System.IO.Compression.ZLibStream(fs, System.IO.Compression.CompressionLevel.Optimal))
         {
-            // Ensure we are working with a known format (Rgba8888)
-            // SKColorType.Rgba8888 corresponds to the byte order R, G, B, A.
-            // If the image appears with swapped colors (e.g. Blue becomes Red),
-            // it's possible that the platform's SKColorType.N32 is being used elsewhere
-            // or there's a misunderstanding of the byte order.
-            // PDF's DeviceRGB expects R, G, B.
+            /*
+                Ensure we're working with a known format (Rgba8888)
+                SKColorType.Rgba888 corresponds to the byte order R, G, B, A.
+                If the image appears with swapped colors (e.g. Blue becomes Red),
+                it's possible that the platform's SKColorType.N32 is being used elsewhere
+                or there's a misunderstanding of the byte order.
+                PDF's DeviceRGB expects R, G, B.
+             */
             using var converted = new SKBitmap(width, height, SKColorType.Rgba8888, SKAlphaType.Opaque);
             bitmap.CopyTo(converted);
             
@@ -113,14 +115,6 @@ public class PdfImage : PdfObject, IDisposable
                 for (var x = 0; x < width; x++)
                 {
                     var offset = (y * rowSize) + (x * 4);
-                    
-                    // Explicitly use R, G, B channels. 
-                    // If it still shows Red instead of Blue, we might need to swap 0 and 2.
-                    // Actually, SkiaSharp's Rgba8888 is R, G, B, A in byte order.
-                    // If the user says it appears red when it's blue, it means
-                    // B (at offset 2) is being read as R (at index 0).
-                    // This means the bytes we are writing are being interpreted as BGR or something.
-                    // Let's swap them to test.
                     rowData[x * 3] = pixels[offset + 2];     // B -> R
                     rowData[x * 3 + 1] = pixels[offset + 1]; // G -> G
                     rowData[x * 3 + 2] = pixels[offset];     // R -> B

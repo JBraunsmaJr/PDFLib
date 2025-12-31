@@ -2,14 +2,11 @@
 using PDFLib;
 using PdfTest;
 
-// Re-use the image generation logic from the previous comprehensive test if needed,
-// but for simplicity let's just use what's already there or a simple path.
 var imagePath = Path.Join(AppDomain.CurrentDomain.BaseDirectory, "test.png");
 
 // Ensure test.png exists (from previous runs or create a dummy one)
 if (!File.Exists(imagePath))
 {
-    // Simple way to ensure we have an image
     using var bitmap = new SkiaSharp.SKBitmap(100, 100);
     using var canvas = new SkiaSharp.SKCanvas(bitmap);
     canvas.Clear(SkiaSharp.SKColors.Blue);
