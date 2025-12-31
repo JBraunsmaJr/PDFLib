@@ -2,12 +2,19 @@
 
 public class PdfTable
 {
-    private readonly List<string[]> _rows = new();
+    private readonly List<TableCellData> _rows = new();
     private readonly float[] _columnWidths;
     public int FontSize { get; set; } = 12;
     public string FontAlias { get; set; } = "F1";
     public int RowHeight { get; set; } = 20;
     public int Padding { get; set; } = 5;
+
+    public class TableCellData
+    {
+        public string[] Texts { get; set; } = Array.Empty<string>();
+        public string?[] BackgroundColors { get; set; } = Array.Empty<string?>();
+        public string?[] TextColors { get; set; } = Array.Empty<string?>();
+    }
 
     public PdfTable(float[] columnWidths)
     {
@@ -16,7 +23,12 @@ public class PdfTable
 
     public void AddRow(params string[] cells)
     {
-        _rows.Add(cells);
+        _rows.Add(new TableCellData { Texts = cells, BackgroundColors = new string?[cells.Length], TextColors = new string?[cells.Length] });
+    }
+
+    public void AddRow(TableCellData rowData)
+    {
+        _rows.Add(rowData);
     }
 
     public int Render(PdfPage page, int x, int y)
@@ -31,7 +43,7 @@ public class PdfTable
             // Prepare wrapped text for each cell and find max row height
             for (var i = 0; i < _columnWidths.Length; i++)
             {
-                var cellText = i < row.Length ? row[i] : "";
+                var cellText = i < row.Texts.Length ? row.Texts[i] : "";
                 var cellWidth = _columnWidths[i];
                 var lines = TextMeasurer.WrapText(cellText, cellWidth - (Padding * 2), FontSize);
                 cellLines.Add(lines);
@@ -45,6 +57,13 @@ public class PdfTable
             {
                 var cellWidth = _columnWidths[i];
                 var lines = cellLines[i];
+                var bgColor = i < row.BackgroundColors.Length ? row.BackgroundColors[i] : null;
+                var textColor = i < row.TextColors.Length ? row.TextColors[i] : null;
+
+                if (bgColor != null)
+                {
+                    page.DrawRectangle(currentX, currentY - rowMaxHeight, (int)cellWidth, rowMaxHeight, fillColor: bgColor);
+                }
 
                 // Draw cell border
                 page.DrawLine(currentX, currentY, (int)(currentX + cellWidth), currentY); // Top
@@ -56,7 +75,7 @@ public class PdfTable
                 var textY = currentY - Padding;
                 foreach (var line in lines)
                 {
-                    page.DrawText(FontAlias, FontSize, currentX + Padding, textY - FontSize, line);
+                    page.DrawText(FontAlias, FontSize, currentX + Padding, textY - FontSize, line, color: textColor);
                     textY -= (FontSize + 2);
                 }
 

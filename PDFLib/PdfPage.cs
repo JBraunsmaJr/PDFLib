@@ -50,8 +50,9 @@ public class PdfPage
         _fonts.Add("/" + alias, new PdfReference(fontId));
     }
 
-    public void DrawText(string fontAlias, int size, int x, int y, string text)
+    public void DrawText(string fontAlias, int size, int x, int y, string text, string? color = null)
     {
+        SetFillColor(color ?? "black");
         _contentWriter.Write($"BT /{fontAlias} {size} Tf {x} {y} Td ({text}) Tj ET\n");
     }
 
@@ -77,9 +78,75 @@ public class PdfPage
         table.Render(this, x, y);
     }
 
-    public void DrawRectangle(int x, int y, int width, int height)
+    public void DrawRectangle(int x, int y, int width, int height, string? fillColor = null, string? strokeColor = null)
     {
-        _contentWriter.Write($"{x} {y} {width} {height} re S\n");
+        if (fillColor != null)
+        {
+            SetFillColor(fillColor);
+            _contentWriter.Write($"{x} {y} {width} {height} re f\n");
+        }
+
+        if (strokeColor != null)
+        {
+            SetStrokeColor(strokeColor);
+            _contentWriter.Write($"{x} {y} {width} {height} re s\n");
+        }
+        else if (fillColor == null)
+        {
+            _contentWriter.Write($"{x} {y} {width} {height} re S\n");
+        }
+    }
+
+    public void SetFillColor(string color)
+    {
+        var (r, g, b) = ParseColor(color);
+        _contentWriter.Write($"{r:0.###} {g:0.###} {b:0.###} rg\n");
+    }
+
+    public void SetStrokeColor(string color)
+    {
+        var (r, g, b) = ParseColor(color);
+        _contentWriter.Write($"{r:0.###} {g:0.###} {b:0.###} RG\n");
+    }
+
+    private (double r, double g, double b) ParseColor(string color)
+    {
+        if (color.StartsWith("#"))
+        {
+            color = color.TrimStart('#');
+            if (color.Length == 6)
+            {
+                var r = Convert.ToInt32(color.Substring(0, 2), 16) / 255.0;
+                var g = Convert.ToInt32(color.Substring(2, 2), 16) / 255.0;
+                var b = Convert.ToInt32(color.Substring(4, 2), 16) / 255.0;
+                return (r, g, b);
+            }
+            if (color.Length == 3)
+            {
+                var r = Convert.ToInt32(new string(color[0], 2), 16) / 255.0;
+                var g = Convert.ToInt32(new string(color[1], 2), 16) / 255.0;
+                var b = Convert.ToInt32(new string(color[2], 2), 16) / 255.0;
+                return (r, g, b);
+            }
+        }
+        
+        // Basic named colors support
+        return color.ToLower() switch
+        {
+            "black" => (0, 0, 0),
+            "white" => (1, 1, 1),
+            "red" => (1, 0, 0),
+            "green" => (0, 1, 0),
+            "blue" => (0, 0, 1),
+            "gray" => (0.5, 0.5, 0.5),
+            "lightgray" => (0.75, 0.75, 0.75),
+            "yellow" => (1, 1, 0),
+            "cyan" => (0, 1, 1),
+            "magenta" => (1, 0, 1),
+            "orange" => (1, 0.65, 0),
+            "purple" => (0.5, 0, 0.5),
+            _ => (0, 0, 0)
+        };
     }
 
     public void Build(bool compress = false)

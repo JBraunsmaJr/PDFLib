@@ -7,6 +7,8 @@ public class Text : ComponentBase
 {
     [Parameter] public int FontSize { get; set; } = 12;
     [Parameter] public string Align { get; set; } = "Left";
+    [Parameter] public string? Color { get; set; }
+    [Parameter] public string? BackgroundColor { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
     protected override void BuildRenderTree(RenderTreeBuilder builder)
@@ -14,7 +16,9 @@ public class Text : ComponentBase
         builder.OpenElement(0, "text");
         builder.AddAttribute(1, "fontsize", FontSize);
         builder.AddAttribute(2, "align", Align);
-        builder.AddContent(3, ChildContent);
+        if (Color != null) builder.AddAttribute(3, "color", Color);
+        if (BackgroundColor != null) builder.AddAttribute(4, "backgroundcolor", BackgroundColor);
+        builder.AddContent(5, ChildContent);
         builder.CloseElement();
     }
 }

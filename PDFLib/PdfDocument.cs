@@ -106,7 +106,7 @@ public class PdfDocument : IDisposable
         acroForm.Add("/SigFlags", new PdfNumber(3)); // 1 (SignaturesExist) + 2 (AppendOnly)
         _catalog.Add("/AcroForm", acroForm);
 
-        int i = 1;
+        var i = 1;
         foreach (var kvp in _signatures)
         {
             var name = kvp.Key;

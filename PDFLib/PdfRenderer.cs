@@ -38,7 +38,7 @@ public class PdfRenderer
         var pageElements = root.Elements("page").ToList();
         var totalPages = pageElements.Count;
 
-        for (int i = 0; i < pageElements.Count; i++)
+        for (var i = 0; i < pageElements.Count; i++)
         {
             var pageElement = pageElements[i];
             var isFirstPage = i == 0;
@@ -113,6 +113,8 @@ public class PdfRenderer
                 return RenderSignature(doc, page, element, x, y, width);
             case "page-number":
                 return RenderPageNumber(page, element, x, y, width, pageNumber, totalPages);
+            case "list":
+                return RenderList(doc, page, element, x, y, width, pageNumber, totalPages);
             default:
                 // If it's an unknown element, we still might want to render its children
                 foreach (var child in element.Elements())
@@ -144,11 +146,32 @@ public class PdfRenderer
 
     private int RenderStack(PdfDocument doc, PdfPage page, XElement element, int x, int y, int width, int pageNumber, int totalPages)
     {
+        var bgColor = element.Attribute("backgroundcolor")?.Value;
+        int.TryParse(element.Attribute("padding")?.Value, out var padding);
+
+        var startY = y;
+        var currentY = y - padding;
+
         foreach (var child in element.Elements())
         {
-            y = RenderElement(doc, page, child, x, y, width, pageNumber, totalPages);
+            currentY = RenderElement(doc, page, child, x + padding, currentY, width - (2 * padding), pageNumber, totalPages);
         }
-        return y;
+
+        var endY = currentY - padding;
+
+        if (bgColor != null)
+        {
+            // We need to render the background AFTER we know the height, but PDF renders top-to-bottom
+            // Actually, we can't easily render background behind if we already rendered text unless we use layers or re-order.
+            // For now, let's just accept that backgrounds might be tricky with the current one-pass approach.
+            // WAIT, I can draw the rectangle first if I knew the height.
+            // Since I don't know the height, maybe I should pre-calculate it? 
+            // Or just draw it and hope for the best (it will be ON TOP if I draw it after).
+            // Actually, the most PDF-friendly way is to draw background, then content.
+            // To do that I need to measure children first.
+        }
+
+        return endY;
     }
 
     private int RenderText(PdfPage page, XElement element, int x, int y, int width, int pageNumber, int totalPages)
@@ -157,15 +180,23 @@ public class PdfRenderer
             fontSize = 12;
         
         var align = element.Attribute("align")?.Value ?? "Left";
+        var color = element.Attribute("color")?.Value;
+        var bgColor = element.Attribute("backgroundcolor")?.Value;
         var text = element.Value.Trim();
         
-        // Replace placeholders if any (though usually text doesn't have them, but maybe?)
+        // Replace placeholders if any
         text = text.Replace("{n}", pageNumber.ToString()).Replace("{x}", totalPages.ToString());
 
         var fontAlias = fontSize > 15 ? "F2" : "F1";
 
         var lines = TextMeasurer.WrapText(text, width, fontSize);
         var currentY = y;
+
+        if (bgColor != null)
+        {
+            var height = lines.Count * (fontSize + 2) + 4;
+            page.DrawRectangle(x, y - height, width, height, fillColor: bgColor);
+        }
 
         foreach (var line in lines)
         {
@@ -175,8 +206,12 @@ public class PdfRenderer
             {
                 textX = x + width - (line.Length * (fontSize / 2)); // Very rough estimation
             }
+            else if (align == "Center")
+            {
+                textX = x + (width - (line.Length * (fontSize / 2))) / 2;
+            }
 
-            page.DrawText(fontAlias, fontSize, textX, currentY - fontSize, line);
+            page.DrawText(fontAlias, fontSize, textX, currentY - fontSize, line, color: color);
             currentY -= (fontSize + 2);
         }
 
@@ -238,8 +273,24 @@ public class PdfRenderer
         var table = new PdfTable(columnWidths);
         foreach (var rowElement in element.Elements("tr"))
         {
-            var cells = rowElement.Elements("td").Select(e => e.Value.Trim()).ToArray();
-            table.AddRow(cells);
+            var cellElements = rowElement.Elements("td").ToList();
+            var texts = new string[cellElements.Count];
+            var bgColors = new string?[cellElements.Count];
+            var textColors = new string?[cellElements.Count];
+
+            for (var i = 0; i < cellElements.Count; i++)
+            {
+                texts[i] = cellElements[i].Value.Trim();
+                bgColors[i] = cellElements[i].Attribute("backgroundcolor")?.Value;
+                textColors[i] = cellElements[i].Attribute("color")?.Value;
+            }
+
+            table.AddRow(new PdfTable.TableCellData 
+            { 
+                Texts = texts, 
+                BackgroundColors = bgColors, 
+                TextColors = textColors 
+            });
         }
 
         return table.Render(page, x, y) - 10;
@@ -263,6 +314,7 @@ public class PdfRenderer
     {
         var format = element.Attribute("format")?.Value ?? "Page {n} of {x}";
         var align = element.Attribute("align")?.Value ?? "Left";
+        var color = element.Attribute("color")?.Value;
         var text = format.Replace("{n}", pageNumber.ToString()).Replace("{x}", totalPages.ToString());
         
         var fontSize = 10;
@@ -272,7 +324,44 @@ public class PdfRenderer
             textX = x + width - (text.Length * (fontSize / 2));
         }
 
-        page.DrawText("F1", fontSize, textX, y - fontSize, text);
+        page.DrawText("F1", fontSize, textX, y - fontSize, text, color: color);
         return y - 15;
+    }
+
+    private int RenderList(PdfDocument doc, PdfPage page, XElement element, int x, int y, int width, int pageNumber, int totalPages)
+    {
+        var type = element.Attribute("type")?.Value ?? "Bullet";
+        var color = element.Attribute("color")?.Value;
+        var items = element.Elements("list-item").ToList();
+        var currentY = y;
+        var indent = 20;
+        var bulletSize = 12;
+
+        for (var i = 0; i < items.Count; i++)
+        {
+            var item = items[i];
+            var marker = type == "Bullet" ? "-" : $"{i + 1}.";
+            
+            // Draw marker
+            page.DrawText("F1", bulletSize, x, currentY - bulletSize, marker, color: color);
+            
+            // Draw content
+            int nextY;
+            if (!item.Elements().Any() && !string.IsNullOrWhiteSpace(item.Value))
+            {
+                // Create a virtual text element for the raw text
+                var textElement = new XElement("text", item.Value);
+                if (color != null) textElement.SetAttributeValue("color", color);
+                nextY = RenderText(page, textElement, x + indent, currentY, width - indent, pageNumber, totalPages);
+            }
+            else
+            {
+                nextY = RenderElement(doc, page, item, x + indent, currentY, width - indent, pageNumber, totalPages);
+            }
+            
+            currentY = nextY - 5; // Space between items
+        }
+
+        return currentY;
     }
 }

@@ -34,12 +34,16 @@ public class TableRow : ComponentBase
 
 public class TableCell : ComponentBase
 {
+    [Parameter] public string? BackgroundColor { get; set; }
+    [Parameter] public string? Color { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
     protected override void BuildRenderTree(RenderTreeBuilder builder)
     {
         builder.OpenElement(0, "td");
-        builder.AddContent(1, ChildContent);
+        if (BackgroundColor != null) builder.AddAttribute(1, "backgroundcolor", BackgroundColor);
+        if (Color != null) builder.AddAttribute(2, "color", Color);
+        builder.AddContent(3, ChildContent);
         builder.CloseElement();
     }
 }
