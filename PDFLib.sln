@@ -1,0 +1,22 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PDFLib", "PDFLib\PDFLib.csproj", "{AAAC8B02-5F64-4419-8DC4-90AD5C39EE48}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PdfTest", "PdfTest\PdfTest.csproj", "{F3650EBE-DD76-48C7-9FD4-D1724472BB01}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{AAAC8B02-5F64-4419-8DC4-90AD5C39EE48}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AAAC8B02-5F64-4419-8DC4-90AD5C39EE48}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AAAC8B02-5F64-4419-8DC4-90AD5C39EE48}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AAAC8B02-5F64-4419-8DC4-90AD5C39EE48}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F3650EBE-DD76-48C7-9FD4-D1724472BB01}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F3650EBE-DD76-48C7-9FD4-D1724472BB01}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F3650EBE-DD76-48C7-9FD4-D1724472BB01}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F3650EBE-DD76-48C7-9FD4-D1724472BB01}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
