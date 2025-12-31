@@ -10,7 +10,7 @@ public class PdfDocument : IDisposable
     private readonly List<PdfObject> _objects = new();
     private readonly PdfDictionary _catalog = new();
     private readonly PdfDictionary _pages = new();
-    private readonly PdfArray _kids = new PdfArray();
+    private readonly PdfArray _kids = new();
     private readonly Dictionary<int, long> _offsets = new();
     private Stream? _outputStream;
     private BinaryWriter? _writer;
@@ -21,7 +21,8 @@ public class PdfDocument : IDisposable
     }
 
     private readonly Dictionary<string, (X509Certificate2 Cert, PdfSignature Sig, PdfFormXObject? Ap, PdfArray? Rect)> _signatures = new();
-    private readonly List<(string Name, PdfDictionary Field)> _pendingSignatureFields = new();
+    private readonly Dictionary<string, PdfDictionary> _signatureFields = new();
+    private readonly List<string> _pendingSignatureNames = new();
 
     public void AddSignature(X509Certificate2 certificate, int? x = null, int? y = null, int? width = null, int? height = null)
     {
@@ -68,6 +69,15 @@ public class PdfDocument : IDisposable
         signatureAppearance.Build();
 
         _signatures[name] = (data.Cert, data.Sig, signatureAppearance, sigRect);
+
+        // Update the field if it exists
+        if (_signatureFields.TryGetValue(name, out var sigField))
+        {
+            sigField.Add("/Rect", sigRect);
+            var ap = new PdfDictionary();
+            ap.Add("/N", signatureAppearance);
+            sigField.Add("/AP", ap);
+        }
     }
 
     public void Begin(Stream outputStream)
@@ -88,47 +98,39 @@ public class PdfDocument : IDisposable
         _pages.Add("/Kids", _kids);
         // /Count will be updated at the end
 
-        if (_signatures.Count > 0)
+        if (_signatures.Count <= 0) return;
+        
+        var acroForm = new PdfDictionary();
+        var fields = new PdfArray();
+        acroForm.Add("/Fields", fields);
+        acroForm.Add("/SigFlags", new PdfNumber(3)); // 1 (SignaturesExist) + 2 (AppendOnly)
+        _catalog.Add("/AcroForm", acroForm);
+
+        int i = 1;
+        foreach (var kvp in _signatures)
         {
-            var acroForm = new PdfDictionary();
-            var fields = new PdfArray();
-            acroForm.Add("/Fields", fields);
-            acroForm.Add("/SigFlags", new PdfNumber(3)); // 1 (SignaturesExist) + 2 (AppendOnly)
-            _catalog.Add("/AcroForm", acroForm);
+            var name = kvp.Key;
+            var data = kvp.Value;
 
-            int i = 1;
-            foreach (var kvp in _signatures)
+            var sigField = new PdfDictionary();
+            sigField.Add("/Type", new PdfName("/Annot"));
+            sigField.Add("/Subtype", new PdfName("/Widget"));
+            sigField.Add("/FT", new PdfName("/Sig"));
+            sigField.Add("/T", new PdfString($"Signature{i++}"));
+            sigField.Add("/V", data.Sig);
+            sigField.Add("/Rect", data.Rect ?? new PdfArray());
+            sigField.Add("/F", new PdfNumber(4)); // Print flag
+
+            if (data.Ap != null)
             {
-                var name = kvp.Key;
-                var data = kvp.Value;
-
-                var sigField = new PdfDictionary();
-                sigField.Add("/Type", new PdfName("/Annot"));
-                sigField.Add("/Subtype", new PdfName("/Widget"));
-                sigField.Add("/FT", new PdfName("/Sig"));
-                sigField.Add("/T", new PdfString($"Signature{i++}"));
-                sigField.Add("/V", data.Sig);
-                sigField.Add("/Rect", data.Rect ?? new PdfArray());
-                sigField.Add("/F", new PdfNumber(4)); // Print flag
-
-                if (data.Ap != null)
-                {
-                    var ap = new PdfDictionary();
-                    ap.Add("/N", data.Ap);
-                    sigField.Add("/AP", ap);
-                    RegisterObject(data.Ap);
-                }
-
-                fields.Add(sigField);
-                
-                // IMPORTANT: We MUST register the field object so it has an ID
-                RegisterObject(sigField);
-                
-                if (data.Rect != null)
-                {
-                    _pendingSignatureFields.Add((name, sigField));
-                }
+                var ap = new PdfDictionary();
+                ap.Add("/N", data.Ap);
+                sigField.Add("/AP", ap);
             }
+
+            fields.Add(sigField);
+            _signatureFields[name] = sigField;
+            _pendingSignatureNames.Add(name);
         }
     }
 
@@ -148,9 +150,17 @@ public class PdfDocument : IDisposable
 
     public void AddSignatureToPage(PdfPage page, string signatureName)
     {
-        var pending = _pendingSignatureFields.FirstOrDefault(x => x.Name == signatureName);
-        if (pending.Field != null)
+        if (_signatureFields.TryGetValue(signatureName, out var sigField) && _pendingSignatureNames.Contains(signatureName))
         {
+            var data = _signatures[signatureName];
+            
+            // Register related objects if not yet done
+            if (data.Sig.ObjectId == null) RegisterObject(data.Sig);
+            if (data.Ap != null && data.Ap.ObjectId == null) RegisterObject(data.Ap);
+            
+            // Register the field itself
+            RegisterObject(sigField);
+
             PdfArray annots;
             var existing = page.PageDict.GetOptional("/Annots");
             if (existing is PdfArray arr)
@@ -162,8 +172,8 @@ public class PdfDocument : IDisposable
                 annots = new PdfArray();
                 page.PageDict.Add("/Annots", annots);
             }
-            annots.Add(pending.Field);
-            _pendingSignatureFields.Remove(pending);
+            annots.Add(sigField);
+            _pendingSignatureNames.Remove(signatureName);
         }
     }
 
@@ -199,9 +209,15 @@ public class PdfDocument : IDisposable
     {
         if (!_isStreaming || _writer == null || _outputStream == null) return;
 
-        foreach (var sigData in _signatures.Values)
+        // Register any remaining (invisible) signature fields
+        foreach (var name in _pendingSignatureNames.ToList())
         {
-            RegisterObject(sigData.Sig);
+            var data = _signatures[name];
+            var sigField = _signatureFields[name];
+            
+            if (data.Sig.ObjectId == null) RegisterObject(data.Sig);
+            if (data.Ap != null && data.Ap.ObjectId == null) RegisterObject(data.Ap);
+            RegisterObject(sigField);
         }
 
         // Write Catalog and Pages objects if they weren't written yet
@@ -221,14 +237,9 @@ public class PdfDocument : IDisposable
 
         for (var i = 1; i <= maxId; i++)
         {
-            if (_offsets.TryGetValue(i, out var offset))
-            {
-                _writer.Write(Encoding.ASCII.GetBytes($"{offset:D10} 00000 n \n"));
-            }
-            else
-            {
-                _writer.Write(Encoding.ASCII.GetBytes("0000000000 00000 f \n"));
-            }
+            _writer.Write(_offsets.TryGetValue(i, out var offset)
+                ? Encoding.ASCII.GetBytes($"{offset:D10} 00000 n \n")
+                : Encoding.ASCII.GetBytes("0000000000 00000 f \n"));
         }
 
         _writer.Write(Encoding.ASCII.GetBytes("trailer\n"));

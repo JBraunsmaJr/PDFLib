@@ -4,7 +4,7 @@ namespace PDFLib;
 
 public static class TextMeasurer
 {
-    private static readonly SKFont Font = new SKFont(SKTypeface.FromFamilyName("Helvetica"), 12);
+    private static readonly SKFont Font = new(SKTypeface.FromFamilyName("Helvetica"), 12);
 
     public static List<string> WrapText(string text, float maxWidth, float fontSize)
     {

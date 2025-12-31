@@ -69,13 +69,6 @@ public class PdfRenderer
             foreach (var element in pageElement.Elements().Where(e => !specialElements.Contains(e.Name.LocalName)))
             {
                 currentY = RenderElement(doc, pdfPage, element, padding, currentY, usableWidth, pageNumber, totalPages);
-                
-                // If it was a signature, we need to link it to this page in the PDF structure
-                if (element.Name.LocalName == "signature")
-                {
-                    var sigName = element.Attribute("name")?.Value ?? "default";
-                    doc.AddSignatureToPage(pdfPage, sigName);
-                }
             }
 
             // Handle Footer
@@ -85,9 +78,11 @@ public class PdfRenderer
 
             if (footerToRender != null)
             {
-                // Render footer near the bottom of the page
-                // The footer content can grow upwards, so we might need to handle it better.
-                // For now, let's just use a fixed low Y.
+                /*
+                 * Render foot near the bottom of the page
+                 * The footer content can grow upwards, so we might need to handle it better.
+                 * For not, let's just use a fixed low Y
+                 */
                 var footerY = padding + 60; 
                 RenderElement(doc, pdfPage, footerToRender, padding, footerY, usableWidth, pageNumber, totalPages);
             }
@@ -115,7 +110,7 @@ public class PdfRenderer
             case "table":
                 return RenderTable(page, element, x, y, width);
             case "signature":
-                return RenderSignature(doc, element, x, y, width);
+                return RenderSignature(doc, page, element, x, y, width);
             case "page-number":
                 return RenderPageNumber(page, element, x, y, width, pageNumber, totalPages);
             default:
@@ -158,7 +153,9 @@ public class PdfRenderer
 
     private int RenderText(PdfPage page, XElement element, int x, int y, int width, int pageNumber, int totalPages)
     {
-        var fontSize = int.Parse(element.Attribute("fontsize")?.Value ?? "12");
+        if (!int.TryParse(element.Attribute("fontsize")?.Value, out var fontSize))
+            fontSize = 12;
+        
         var align = element.Attribute("align")?.Value ?? "Left";
         var text = element.Value.Trim();
         
@@ -183,19 +180,31 @@ public class PdfRenderer
             currentY -= (fontSize + 2);
         }
 
-        return currentY - 3; // spacing
+        return currentY - 3;
     }
 
-    private int RenderImage(PdfPage page, XElement element, int x, int y, int width)
+    /// <summary>
+    /// Renders an image
+    /// </summary>
+    /// <param name="page">Page image should render on</param>
+    /// <param name="element"></param>
+    /// <param name="x">X coordinate</param>
+    /// <param name="y">Y coordinate</param>
+    /// <param name="width">Default width if "width" attribute is not provided</param>
+    /// <param name="height">Default height if "height" attribute is not provided</param>
+    /// <returns></returns>
+    private int RenderImage(PdfPage page, XElement element, int x, int y, int width=100, int height=100)
     {
         var source = element.Attribute("source")?.Value;
-        var imgWidth = int.Parse(element.Attribute("width")?.Value ?? "100");
         
         if (string.IsNullOrEmpty(source)) return y;
 
-        // In a real implementation, we'd handle height better. For now, assume square or fixed height.
-        var imgHeight = imgWidth; 
-
+        if (!int.TryParse(element.Attribute("width")?.Value, out var imgWidth))
+            imgWidth = width;
+        
+        if(!int.TryParse(element.Attribute("height")?.Value, out var imgHeight))
+            imgHeight = height;
+        
         try
         {
             using var img = PdfImage.FromFile(source);
@@ -220,7 +229,7 @@ public class PdfRenderer
         }
         else
         {
-            // Default to equal widths based on children of first row
+            // Default to equal widths based on children of the first row
             var firstRow = element.Element("tr");
             var cellCount = firstRow?.Elements("td").Count() ?? 1;
             columnWidths = Enumerable.Repeat((float)width / cellCount, cellCount).ToArray();
@@ -236,7 +245,7 @@ public class PdfRenderer
         return table.Render(page, x, y) - 10;
     }
 
-    private int RenderSignature(PdfDocument doc, XElement element, int x, int y, int width)
+    private int RenderSignature(PdfDocument doc, PdfPage page, XElement element, int x, int y, int width)
     {
         var name = element.Attribute("name")?.Value ?? "default";
         var sigX = int.Parse(element.Attribute("x")?.Value ?? x.ToString());
@@ -245,6 +254,7 @@ public class PdfRenderer
         var sigHeight = int.Parse(element.Attribute("height")?.Value ?? "50");
 
         doc.SetSignatureAppearance(name, sigX, sigY, sigWidth, sigHeight);
+        doc.AddSignatureToPage(page, name);
         
         return sigY; 
     }

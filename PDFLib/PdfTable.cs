@@ -22,7 +22,6 @@ public class PdfTable
     public int Render(PdfPage page, int x, int y)
     {
         var currentY = y;
-        var totalWidth = _columnWidths.Sum();
 
         foreach (var row in _rows)
         {
