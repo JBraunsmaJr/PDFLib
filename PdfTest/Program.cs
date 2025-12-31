@@ -1,47 +1,55 @@
-﻿using System.Drawing;
-using System.Drawing.Imaging;
+﻿using SkiaSharp;
 using PDFLib;
 
 // Create a test image
-string imagePath = Path.Join(AppDomain.CurrentDomain.BaseDirectory, "test.png");
-using (var bmp = new Bitmap(100, 100))
+var imagePath = Path.Join(AppDomain.CurrentDomain.BaseDirectory, "test.png");
+using (var bitmap = new SKBitmap(100, 100))
 {
-    using (var g = Graphics.FromImage(bmp))
+    using (var canvas = new SKCanvas(bitmap))
     {
-        g.Clear(Color.Blue);
-        g.DrawRectangle(Pens.Red, 10, 10, 80, 80);
-        g.FillEllipse(Brushes.Green, 30, 30, 40, 40);
+        canvas.Clear(SKColors.Blue);
+        using var paint = new SKPaint
+        {
+            Color = SKColors.Red,
+            Style = SKPaintStyle.Stroke,
+            StrokeWidth = 1
+        };
+        canvas.DrawRect(10, 10, 80, 80, paint);
+
+        paint.Color = SKColors.Green;
+        paint.Style = SKPaintStyle.Fill;
+        canvas.DrawOval(30, 30, 20, 20, paint); // In SkiaSharp, rx/ry are radii
     }
-    bmp.Save(imagePath, ImageFormat.Png);
+    
+    using (var image = SKImage.FromBitmap(bitmap))
+    using (var data = image.Encode(SKEncodedImageFormat.Png, 100))
+    using (var stream = File.OpenWrite(imagePath))
+    {
+        data.SaveTo(stream);
+    }
 }
 
-var doc = new PdfDocument();
+using var doc = new PdfDocument();
+using var fs = new FileStream(Path.Join(AppDomain.CurrentDomain.BaseDirectory, "streaming-test.pdf"), FileMode.Create);
+doc.Begin(fs);
 
-var page = doc.AddPage();
+// Test Large number of pages
+for (var i = 1; i <= 100; i++)
+{
+    var p = doc.AddPage();
+    p.AddFont("F1", "Helvetica");
+    p.DrawText("F1", 12, 50, 800, $"This is page {i} of 100");
+    p.DrawLine(50, 790, 550, 790);
+    
+    if (i == 1)
+    {
+        // Add image only on first page to test it still works
+        using var pdfImage = PdfImage.FromFile(imagePath);
+        p.DrawImage("Img1", pdfImage, 50, 600, 100, 100);
+    }
+    
+    p.Build(compress: true);
+}
 
-page.AddFont("F1", "Helvetica");
-page.AddFont("F2", "Times-Roman");
-
-page.DrawText("F1", 24, 50, 780, "PDFLib Extended Features");
-page.DrawText("F2", 12, 50, 760, "Testing Compression, Images, and Tables");
-
-// Test Image
-var pdfImage = PdfImage.FromFile(imagePath);
-page.DrawImage("Img1", pdfImage, 50, 600, 100, 100);
-page.DrawText("F1", 10, 50, 580, "Blue square with red border and green circle (100x100)");
-
-// Test Table
-var table = new PdfTable(new float[] { 100, 150, 100 });
-table.AddRow("ID", "Name", "Role");
-table.AddRow("1", "John Doe", "Developer");
-table.AddRow("2", "Jane Smith", "Designer");
-table.AddRow("3", "Bob Johnson", "Manager");
-page.DrawTable(table, 50, 500);
-
-page.DrawLine(50, 50, 500, 50);
-
-// Build with compression
-page.Build(compress: true);
-
-doc.Save(Path.Join(AppDomain.CurrentDomain.BaseDirectory, "extended-test.pdf"));
-Console.WriteLine("PDF saved to extended-test.pdf");
+doc.Close();
+Console.WriteLine("Streaming PDF saved to streaming-test.pdf");

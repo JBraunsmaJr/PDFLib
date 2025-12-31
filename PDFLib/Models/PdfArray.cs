@@ -9,19 +9,30 @@ public class PdfArray : PdfObject
     public int Count => _items.Count;
     public void Add(PdfObject item) => _items.Add(item);
 
-    public override byte[] GetBytes()
+    public override void WriteTo(BinaryWriter writer)
     {
-        var sb = new StringBuilder("[");
+        writer.Write(ToAscii("["));
         foreach (var item in _items)
         {
-            sb.Append(' ');
+            writer.Write(ToAscii(" "));
             if (item.ObjectId.HasValue && !(item is PdfReference))
-                sb.Append($"{item.ObjectId} {item.Generation} R");
+            {
+                writer.Write(ToAscii($"{item.ObjectId} {item.Generation} R"));
+            }
             else
-                sb.Append(Encoding.ASCII.GetString(item.GetBytes()));
+            {
+                item.WriteTo(writer);
+            }
         }
 
-        sb.Append(']');
-        return ToAscii(sb.ToString());
+        writer.Write(ToAscii("]"));
+    }
+
+    public override byte[] GetBytes()
+    {
+        using var ms = new MemoryStream();
+        using var writer = new BinaryWriter(ms);
+        WriteTo(writer);
+        return ms.ToArray();
     }
 }

@@ -14,6 +14,11 @@ public abstract class PdfObject
     public int Generation { get; set; } = 0;
 
     public abstract byte[] GetBytes();
+
+    public virtual void WriteTo(BinaryWriter writer)
+    {
+        writer.Write(GetBytes());
+    }
     
     protected byte[] ToAscii(string text) => Encoding.ASCII.GetBytes(text);
 }

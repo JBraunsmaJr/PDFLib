@@ -17,6 +17,14 @@ public class PdfStreamObject : PdfObject
         _content = content;
     }
 
+    public override void WriteTo(BinaryWriter writer)
+    {
+        _dict.WriteTo(writer);
+        writer.Write(ToAscii("\nstream\n"));
+        writer.Write(_content);
+        writer.Write(ToAscii("\nendstream"));
+    }
+
     public override byte[] GetBytes()
     {
         var bytes = new List<byte>();

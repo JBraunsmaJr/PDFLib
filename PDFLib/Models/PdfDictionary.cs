@@ -8,26 +8,34 @@ public class PdfDictionary : PdfObject
 
     public void Add(string key, PdfObject value) => _dict[key] = value;
 
-    public override byte[] GetBytes()
+    public override void WriteTo(BinaryWriter writer)
     {
-        var sb = new StringBuilder("<<");
+        writer.Write(ToAscii("<<"));
 
         foreach (var kvp in _dict)
         {
-            sb.Append($" {kvp.Key} ");
+            writer.Write(ToAscii($" {kvp.Key} "));
 
             if (kvp.Value.ObjectId.HasValue && !(kvp.Value is PdfReference))
-                sb.Append($"{kvp.Value.ObjectId} {kvp.Value.Generation} R\n");
+            {
+                writer.Write(ToAscii($"{kvp.Value.ObjectId} {kvp.Value.Generation} R\n"));
+            }
             else
             {
-                var bytes = kvp.Value.GetBytes();
-                sb.Append(Encoding.ASCII.GetString(bytes));
+                kvp.Value.WriteTo(writer);
                 if (kvp.Value is PdfDictionary || kvp.Value is PdfArray)
-                    sb.Append('\n');
+                    writer.Write(ToAscii("\n"));
             }
         }
 
-        sb.Append(" >>");
-        return ToAscii(sb.ToString());
+        writer.Write(ToAscii(" >>"));
+    }
+
+    public override byte[] GetBytes()
+    {
+        using var ms = new MemoryStream();
+        using var writer = new BinaryWriter(ms);
+        WriteTo(writer);
+        return ms.ToArray();
     }
 }

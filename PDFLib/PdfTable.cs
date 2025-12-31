@@ -21,13 +21,13 @@ public class PdfTable
 
     public void Render(PdfPage page, int x, int y)
     {
-        int currentY = y;
-        float totalWidth = _columnWidths.Sum();
+        var currentY = y;
+        var totalWidth = _columnWidths.Sum();
 
         foreach (var row in _rows)
         {
-            int currentX = x;
-            for (int i = 0; i < _columnWidths.Length; i++)
+            var currentX = x;
+            for (var i = 0; i < _columnWidths.Length; i++)
             {
                 var cellText = i < row.Length ? row[i] : "";
                 var cellWidth = _columnWidths[i];
