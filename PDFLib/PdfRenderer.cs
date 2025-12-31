@@ -91,6 +91,22 @@ public class PdfRenderer
         }
     }
 
+    /// <summary>
+    /// Central hub for how elements are translated from Razor/DOM to PDF objects
+    /// </summary>
+    /// <remarks>
+    ///     PDF is explicit in how things render.
+    ///     Layouts are not automatic, so everything must be explicit.
+    /// </remarks>
+    /// <param name="doc"></param>
+    /// <param name="page"></param>
+    /// <param name="element"></param>
+    /// <param name="x"></param>
+    /// <param name="y"></param>
+    /// <param name="width"></param>
+    /// <param name="pageNumber"></param>
+    /// <param name="totalPages"></param>
+    /// <returns>Y coordinate of element after rendering.</returns>
     private int RenderElement(PdfDocument doc, PdfPage page, XElement element, int x, int y, int width, int pageNumber, int totalPages)
     {
         switch (element.Name.LocalName)
@@ -124,7 +140,19 @@ public class PdfRenderer
                 return y;
         }
     }
-
+    
+    /// <summary>
+    /// Render row. This behaves similarly to Grid layouts. The width of each "child" is <paramref name="width"/> divided by the number of children.
+    /// </summary>
+    /// <param name="doc"></param>
+    /// <param name="page"></param>
+    /// <param name="element"></param>
+    /// <param name="x"></param>
+    /// <param name="y"></param>
+    /// <param name="width"></param>
+    /// <param name="pageNumber"></param>
+    /// <param name="totalPages"></param>
+    /// <returns>Y coordinate after rendering</returns>
     private int RenderRow(PdfDocument doc, PdfPage page, XElement element, int x, int y, int width, int pageNumber, int totalPages)
     {
         var children = element.Elements().ToList();
@@ -144,6 +172,18 @@ public class PdfRenderer
         return maxY;
     }
 
+    /// <summary>
+    /// Similar to <see cref="RenderRow"/>, except vertical
+    /// </summary>
+    /// <param name="doc"></param>
+    /// <param name="page"></param>
+    /// <param name="element"></param>
+    /// <param name="x"></param>
+    /// <param name="y"></param>
+    /// <param name="width"></param>
+    /// <param name="pageNumber"></param>
+    /// <param name="totalPages"></param>
+    /// <returns>Y coordinate after rendering</returns>
     private int RenderStack(PdfDocument doc, PdfPage page, XElement element, int x, int y, int width, int pageNumber, int totalPages)
     {
         int.TryParse(element.Attribute("padding")?.Value, out var padding);

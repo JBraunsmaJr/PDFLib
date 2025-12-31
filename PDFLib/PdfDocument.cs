@@ -24,11 +24,15 @@ public class PdfDocument : IDisposable
     private readonly Dictionary<string, PdfDictionary> _signatureFields = new();
     private readonly List<string> _pendingSignatureNames = new();
 
-    public void AddSignature(X509Certificate2 certificate, int? x = null, int? y = null, int? width = null, int? height = null)
-    {
-        AddSignature("default", certificate, x, y, width, height);
-    }
-
+    /// <summary>
+    /// Adds a signature to the document. Associates the signature to a unique name <paramref name="name"/>
+    /// </summary>
+    /// <param name="name">Unique name for signature</param>
+    /// <param name="certificate">The certificate itself in which the signature will be created from.</param>
+    /// <param name="x">X coordinate in which the visual signature should appear</param>
+    /// <param name="y">Y coordinate in which the visual signature should appear</param>
+    /// <param name="width">Width of signature block</param>
+    /// <param name="height">Height of signature block</param>
     public void AddSignature(string name, X509Certificate2 certificate, int? x = null, int? y = null, int? width = null, int? height = null)
     {
         var sig = new PdfSignature();
@@ -39,21 +43,25 @@ public class PdfDocument : IDisposable
             SetSignatureAppearance(name, x.Value, y.Value, width.Value, height.Value);
         }
     }
-
-    public void SetSignatureAppearance(int x, int y, int width, int height)
-    {
-        SetSignatureAppearance("default", x, y, width, height);
-    }
-
+    
+    /// <summary>
+    /// Render signature associated with <paramref name="name"/> at given coordinates, with given dimensions.
+    /// </summary>
+    /// <param name="name">Unique name of signature that's already been registered</param>
+    /// <param name="x">X coordinate of signature block</param>
+    /// <param name="y">Y coordinate of signature block</param>
+    /// <param name="width">Width of signature block</param>
+    /// <param name="height">Height of signature block</param>
     public void SetSignatureAppearance(string name, int x, int y, int width, int height)
     {
         if (!_signatures.TryGetValue(name, out var data)) return;
 
-        var sigRect = new PdfArray();
-        sigRect.Add(new PdfNumber(x));
-        sigRect.Add(new PdfNumber(y));
-        sigRect.Add(new PdfNumber(x + width));
-        sigRect.Add(new PdfNumber(y + height));
+        var sigRect = new PdfArray(
+            new PdfNumber(x),
+            new PdfNumber(y),
+            new PdfNumber(x + width),
+            new PdfNumber(y + height)
+        );
 
         // Create appearance
         var signatureAppearance = new PdfFormXObject(width, height);
