@@ -15,43 +15,59 @@ public class PdfDocument : IDisposable
     private Stream? _outputStream;
     private BinaryWriter? _writer;
     private bool _isStreaming;
-    private PdfSignature? _signature;
-    private X509Certificate2? _certificate;
-    private PdfArray? _sigRect;
 
     public PdfDocument()
     {
     }
 
-    private PdfDictionary? _signatureField;
-    private PdfFormXObject? _signatureAppearance;
+    private readonly Dictionary<string, (X509Certificate2 Cert, PdfSignature Sig, PdfFormXObject? Ap, PdfArray? Rect)> _signatures = new();
+    private readonly List<(string Name, PdfDictionary Field)> _pendingSignatureFields = new();
 
     public void AddSignature(X509Certificate2 certificate, int? x = null, int? y = null, int? width = null, int? height = null)
     {
-        _certificate = certificate;
-        _signature = new PdfSignature();
+        AddSignature("default", certificate, x, y, width, height);
+    }
 
+    public void AddSignature(string name, X509Certificate2 certificate, int? x = null, int? y = null, int? width = null, int? height = null)
+    {
+        var sig = new PdfSignature();
+        _signatures[name] = (certificate, sig, null, null);
+        
         if (x.HasValue && y.HasValue && width.HasValue && height.HasValue)
         {
-            _sigRect = new PdfArray();
-            _sigRect.Add(new PdfNumber(x.Value));
-            _sigRect.Add(new PdfNumber(y.Value));
-            _sigRect.Add(new PdfNumber(x.Value + width.Value));
-            _sigRect.Add(new PdfNumber(y.Value + height.Value));
-
-            // Create appearance
-            _signatureAppearance = new PdfFormXObject(width.Value, height.Value);
-            _signatureAppearance.AddFont("F1", "Helvetica", this);
-            
-            var name = certificate.GetNameInfo(X509NameType.SimpleName, false) ?? certificate.Subject;
-            _signatureAppearance.DrawText("F1", 10, 2, height.Value - 12, $"Digitally signed by: {name}");
-            _signatureAppearance.DrawText("F1", 8, 2, height.Value - 24, $"Date: {DateTime.Now:yyyy.MM.dd HH:mm:ss zzz}");
-            _signatureAppearance.DrawLine(0, 0, width.Value, 0);
-            _signatureAppearance.DrawLine(0, 0, 0, height.Value);
-            _signatureAppearance.DrawLine(width.Value, 0, width.Value, height.Value);
-            _signatureAppearance.DrawLine(0, height.Value, width.Value, height.Value);
-            _signatureAppearance.Build();
+            SetSignatureAppearance(name, x.Value, y.Value, width.Value, height.Value);
         }
+    }
+
+    public void SetSignatureAppearance(int x, int y, int width, int height)
+    {
+        SetSignatureAppearance("default", x, y, width, height);
+    }
+
+    public void SetSignatureAppearance(string name, int x, int y, int width, int height)
+    {
+        if (!_signatures.TryGetValue(name, out var data)) return;
+
+        var sigRect = new PdfArray();
+        sigRect.Add(new PdfNumber(x));
+        sigRect.Add(new PdfNumber(y));
+        sigRect.Add(new PdfNumber(x + width));
+        sigRect.Add(new PdfNumber(y + height));
+
+        // Create appearance
+        var signatureAppearance = new PdfFormXObject(width, height);
+        signatureAppearance.AddFont("F1", "Helvetica", this);
+        
+        var certName = data.Cert.GetNameInfo(X509NameType.SimpleName, false) ?? data.Cert.Subject;
+        signatureAppearance.DrawText("F1", 10, 2, height - 12, $"Digitally signed by: {certName}");
+        signatureAppearance.DrawText("F1", 8, 2, height - 24, $"Date: {DateTime.Now:yyyy.MM.dd HH:mm:ss zzz}");
+        signatureAppearance.DrawLine(0, 0, width, 0);
+        signatureAppearance.DrawLine(0, 0, 0, height);
+        signatureAppearance.DrawLine(width, 0, width, height);
+        signatureAppearance.DrawLine(0, height, width, height);
+        signatureAppearance.Build();
+
+        _signatures[name] = (data.Cert, data.Sig, signatureAppearance, sigRect);
     }
 
     public void Begin(Stream outputStream)
@@ -72,7 +88,7 @@ public class PdfDocument : IDisposable
         _pages.Add("/Kids", _kids);
         // /Count will be updated at the end
 
-        if (_signature != null)
+        if (_signatures.Count > 0)
         {
             var acroForm = new PdfDictionary();
             var fields = new PdfArray();
@@ -80,30 +96,38 @@ public class PdfDocument : IDisposable
             acroForm.Add("/SigFlags", new PdfNumber(3)); // 1 (SignaturesExist) + 2 (AppendOnly)
             _catalog.Add("/AcroForm", acroForm);
 
-            var sigField = new PdfDictionary();
-            sigField.Add("/Type", new PdfName("/Annot"));
-            sigField.Add("/Subtype", new PdfName("/Widget"));
-            sigField.Add("/FT", new PdfName("/Sig"));
-            sigField.Add("/T", new PdfString("Signature1"));
-            sigField.Add("/V", _signature);
-            sigField.Add("/Rect", _sigRect ?? new PdfArray());
-            sigField.Add("/F", new PdfNumber(4)); // Print flag
-
-            if (_signatureAppearance != null)
+            int i = 1;
+            foreach (var kvp in _signatures)
             {
-                var ap = new PdfDictionary();
-                ap.Add("/N", _signatureAppearance);
-                sigField.Add("/AP", ap);
-                RegisterObject(_signatureAppearance);
-            }
+                var name = kvp.Key;
+                var data = kvp.Value;
 
-            fields.Add(sigField);
-            
-            if (_sigRect != null)
-            {
-                // To make it visible, it must be in a page's /Annots
-                // We'll store it and add it to the first page when it's created
-                _signatureField = sigField;
+                var sigField = new PdfDictionary();
+                sigField.Add("/Type", new PdfName("/Annot"));
+                sigField.Add("/Subtype", new PdfName("/Widget"));
+                sigField.Add("/FT", new PdfName("/Sig"));
+                sigField.Add("/T", new PdfString($"Signature{i++}"));
+                sigField.Add("/V", data.Sig);
+                sigField.Add("/Rect", data.Rect ?? new PdfArray());
+                sigField.Add("/F", new PdfNumber(4)); // Print flag
+
+                if (data.Ap != null)
+                {
+                    var ap = new PdfDictionary();
+                    ap.Add("/N", data.Ap);
+                    sigField.Add("/AP", ap);
+                    RegisterObject(data.Ap);
+                }
+
+                fields.Add(sigField);
+                
+                // IMPORTANT: We MUST register the field object so it has an ID
+                RegisterObject(sigField);
+                
+                if (data.Rect != null)
+                {
+                    _pendingSignatureFields.Add((name, sigField));
+                }
             }
         }
     }
@@ -118,15 +142,29 @@ public class PdfDocument : IDisposable
         var page = new PdfPage(this, AssignId(), pagesId);
         _kids.Add(new PdfReference(page.PageDict.ObjectId!.Value));
 
-        if (_signatureField != null)
-        {
-            var annots = new PdfArray();
-            annots.Add(_signatureField);
-            page.PageDict.Add("/Annots", annots);
-            _signatureField = null; // Only add to the first page
-        }
-
+        // We'll need a way to add a specific signature field to a page
         return page;
+    }
+
+    public void AddSignatureToPage(PdfPage page, string signatureName)
+    {
+        var pending = _pendingSignatureFields.FirstOrDefault(x => x.Name == signatureName);
+        if (pending.Field != null)
+        {
+            PdfArray annots;
+            var existing = page.PageDict.GetOptional("/Annots");
+            if (existing is PdfArray arr)
+            {
+                annots = arr;
+            }
+            else
+            {
+                annots = new PdfArray();
+                page.PageDict.Add("/Annots", annots);
+            }
+            annots.Add(pending.Field);
+            _pendingSignatureFields.Remove(pending);
+        }
     }
 
     public int RegisterObject(PdfObject obj)
@@ -161,9 +199,9 @@ public class PdfDocument : IDisposable
     {
         if (!_isStreaming || _writer == null || _outputStream == null) return;
 
-        if (_signature != null)
+        foreach (var sigData in _signatures.Values)
         {
-            RegisterObject(_signature);
+            RegisterObject(sigData.Sig);
         }
 
         // Write Catalog and Pages objects if they weren't written yet
@@ -203,32 +241,21 @@ public class PdfDocument : IDisposable
         
         _writer.Flush();
 
-        if (_signature != null && _certificate != null)
+        foreach (var sigData in _signatures.Values)
         {
-            SignDocument();
+            SignDocument(sigData.Sig, sigData.Cert);
         }
 
         _isStreaming = false;
     }
 
-    private void SignDocument()
+    private void SignDocument(PdfSignature signature, X509Certificate2 certificate)
     {
-        if (_signature == null || _certificate == null || _outputStream == null) return;
+        if (_outputStream == null) return;
 
         var fileLength = _outputStream.Position;
         
-        /*
-            Calculate ByteRange
-            [0 offset1 offset2 offset3]
-            
-            offset1 = byte count before /Contents <
-            offset2 = byte count after > until the end of /Contents entry
-            standard ByteRange is [0 PART1_LENGTH PART2_START PART2_LENGTH]
-         */
-        
-        var contentsStart = _signature.ContentsOffset;
-        
-        // This should match _contentsSize in PdfSignature
+        var contentsStart = signature.ContentsOffset;
         var contentsLength = 4096; 
 
         var part1Length = (int)contentsStart;
@@ -237,7 +264,7 @@ public class PdfDocument : IDisposable
 
         var byteRange = $"[0 {part1Length} {part2Start} {part2Length}]";
         
-        _outputStream.Seek(_signature.ByteRangeOffset, SeekOrigin.Begin);
+        _outputStream.Seek(signature.ByteRangeOffset, SeekOrigin.Begin);
         var byteRangeBytes = Encoding.ASCII.GetBytes(byteRange.PadRight(64));
         _outputStream.Write(byteRangeBytes, 0, byteRangeBytes.Length);
 
@@ -246,7 +273,6 @@ public class PdfDocument : IDisposable
         {
             _outputStream.Seek(0, SeekOrigin.Begin);
             
-            // We need to hash part1 and part2
             var buffer = new byte[8192];
             int read;
             long totalRead = 0;
@@ -278,7 +304,7 @@ public class PdfDocument : IDisposable
         // Sign
         var contentInfo = new System.Security.Cryptography.Pkcs.ContentInfo(hash);
         var signedCms = new System.Security.Cryptography.Pkcs.SignedCms(contentInfo, detached: true);
-        var cmsSigner = new System.Security.Cryptography.Pkcs.CmsSigner(_certificate)
+        var cmsSigner = new System.Security.Cryptography.Pkcs.CmsSigner(certificate)
         {
             DigestAlgorithm = new System.Security.Cryptography.Oid("2.16.840.1.101.3.4.2.1") // SHA256
         };

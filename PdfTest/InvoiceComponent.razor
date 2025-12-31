@@ -1,0 +1,104 @@
+﻿@using PDFLib.Components
+
+<Document>
+    <Header>
+        <Row>
+            <Image Source="@LogoPath" Width="40" />
+            <Text FontSize="10" Align="Right">Confidential Document - Invoice #@InvoiceId</Text>
+        </Row>
+    </Header>
+    <Footer>
+        <Stack>
+            <Text FontSize="8" Align="Center">Company Address: 123 PDF Street, Digital City</Text>
+            <PageNumber Align="Right" Format="Page {n} of {x}" />
+        </Stack>
+    </Footer>
+    
+    <ChildContent>
+        <Page Padding="40">
+            <FirstPageHeader>
+                <Row>
+                    <Image Source="@LogoPath" Width="60" />
+                    <Stack>
+                        <Text FontSize="24" Align="Right">OFFICIAL INVOICE</Text>
+                        <Text FontSize="16" Align="Right">ID: @InvoiceId</Text>
+                    </Stack>
+                </Row>
+            </FirstPageHeader>
+            <ChildContent>
+                <Stack>
+                    <Text FontSize="18">Summary of Services:</Text>
+                    <Table ColumnWidths="350,150">
+                        @foreach(var item in Items)
+                        {
+                            <TableRow>
+                                <TableCell>@item.Name</TableCell>
+                                <TableCell>@item.Price.ToString("C")</TableCell>
+                            </TableRow>
+                        }
+                        <TableRow>
+                            <TableCell>Total Amount Due</TableCell>
+                            <TableCell>@Total.ToString("C")</TableCell>
+                        </TableRow>
+                    </Table>
+                    
+                    <Text>Please find the detailed breakdown on the next pages.</Text>
+                    <Text>Authorized Signature:</Text>
+                    <Signature X="40" Y="200" Width="250" Height="80" Name="PrimarySignature" />
+                </Stack>
+            </ChildContent>
+        </Page>
+
+        <Page Padding="40">
+            <ChildContent>
+                <Stack>
+                    <Text FontSize="18">Detailed Terms &amp; Conditions</Text>
+                    <Text>1. All payments should be made in USD.</Text>
+                    <Text>2. Late payments are subject to a 5% interest fee per month.</Text>
+                    <Text>3. Refund policy: No refunds for consulting services once provided.</Text>
+                    <Text>4. This page uses the global header and footer defined in the Document node.</Text>
+                    <Text>5. Additional info: Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.</Text>
+                </Stack>
+            </ChildContent>
+        </Page>
+
+        <Page Padding="40">
+            <Header>
+                <Text FontSize="14" Align="Center">SPECIAL CUSTOM HEADER FOR PAGE 3</Text>
+            </Header>
+            <ChildContent>
+                <Stack>
+                    <Text FontSize="18">Appendix A: Service Details</Text>
+                    <Text>This page overrides the global header but still uses the global footer.</Text>
+                    <Table ColumnWidths="200,300">
+                        <TableRow>
+                            <TableCell>Service</TableCell>
+                            <TableCell>Description</TableCell>
+                        </TableRow>
+                        <TableRow>
+                            <TableCell>Consulting</TableCell>
+                            <TableCell>Expert advice on PDF generation architecture and implementation. This description is intentionally very long to test the text wrapping capabilities of the library within a table cell.</TableCell>
+                        </TableRow>
+                    </Table>
+                    <Text FontSize="16">Post-table content</Text>
+                    <Text>This text should appear below the table, not overlapping it.</Text>
+                    <Text>1. All payments should be made in USD.</Text>
+                </Stack>
+            </ChildContent>
+        </Page>
+    </ChildContent>
+</Document>
+
+@code {
+    [Parameter] public int InvoiceId { get; set; }
+    [Parameter] public List<InvoiceItem> Items { get; set; } = new();
+    [Parameter] public string? LogoPath { get; set; }
+
+    public decimal Total => Items.Sum(i => i.Price);
+
+    public class InvoiceItem
+    {
+        public string Name { get; set; } = "";
+        public decimal Price { get; set; }
+    }
+}

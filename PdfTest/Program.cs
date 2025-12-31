@@ -1,135 +1,52 @@
-﻿using SkiaSharp;
+﻿using System.Security.Cryptography.X509Certificates;
 using PDFLib;
-using System.Security.Cryptography;
-using System.Security.Cryptography.X509Certificates;
+using PdfTest;
 
-// Generate a self-signed certificate for testing
-X509Certificate2 GenerateTestCertificate()
-{
-    using var rsa = RSA.Create(2048);
-    var request = new CertificateRequest("cn=PDFLibTest", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
-    var cert = request.CreateSelfSigned(DateTimeOffset.Now, DateTimeOffset.Now.AddYears(1));
-    
-    // On Windows, Pkcs12 exports/imports might be needed for the private key to be usable by SignedCms
-    // but in memory cert often works if handled correctly.
-    return X509CertificateLoader.LoadPkcs12(cert.Export(X509ContentType.Pkcs12), null);
-}
-
-var cert = GenerateTestCertificate();
-
-// Create a test image
+// Re-use the image generation logic from the previous comprehensive test if needed,
+// but for simplicity let's just use what's already there or a simple path.
 var imagePath = Path.Join(AppDomain.CurrentDomain.BaseDirectory, "test.png");
-using (var bitmap = new SKBitmap(100, 100))
-{
-    using (var canvas = new SKCanvas(bitmap))
-    {
-        canvas.Clear(SKColors.Blue);
-        using var paint = new SKPaint
-        {
-            Color = SKColors.Red,
-            Style = SKPaintStyle.Stroke,
-            StrokeWidth = 1
-        };
-        canvas.DrawRect(10, 10, 80, 80, paint);
 
-        paint.Color = SKColors.Green;
-        paint.Style = SKPaintStyle.Fill;
-        canvas.DrawOval(30, 30, 20, 20, paint); // In SkiaSharp, rx/ry are radii
-    }
-    
-    using (var image = SKImage.FromBitmap(bitmap))
-    using (var data = image.Encode(SKEncodedImageFormat.Png, 100))
-    using (var stream = File.OpenWrite(imagePath))
-    {
-        data.SaveTo(stream);
-    }
+// Ensure test.png exists (from previous runs or create a dummy one)
+if (!File.Exists(imagePath))
+{
+    // Simple way to ensure we have an image
+    using var bitmap = new SkiaSharp.SKBitmap(100, 100);
+    using var canvas = new SkiaSharp.SKCanvas(bitmap);
+    canvas.Clear(SkiaSharp.SKColors.Blue);
+    using var image = SkiaSharp.SKImage.FromBitmap(bitmap);
+    using var data = image.Encode(SkiaSharp.SKEncodedImageFormat.Png, 100);
+    using var stream = File.OpenWrite(imagePath);
+    data.SaveTo(stream);
 }
+
+// Generate a dummy certificate for signing
+using var rsa = System.Security.Cryptography.RSA.Create(2048);
+var request = new CertificateRequest("cn=Test Signer", rsa, System.Security.Cryptography.HashAlgorithmName.SHA256, System.Security.Cryptography.RSASignaturePadding.Pkcs1);
+using var cert = request.CreateSelfSigned(DateTimeOffset.Now, DateTimeOffset.Now.AddYears(1));
+
+var items = new List<InvoiceComponent.InvoiceItem>
+{
+    new() { Name = "Consulting Services", Price = 1500.00m },
+    new() { Name = "Software License", Price = 499.99m },
+    new() { Name = "Hardware Support", Price = 250.00m }
+};
+
+var parameters = new Dictionary<string, object?>
+{
+    { "InvoiceId", 12345 },
+    { "Items", items },
+    { "LogoPath", imagePath }
+};
 
 using var doc = new PdfDocument();
-doc.AddSignature(cert, 400, 50, 150, 50); // Visible signature in bottom right
-using var fs = new FileStream(Path.Join(AppDomain.CurrentDomain.BaseDirectory, "comprehensive-test.pdf"), FileMode.Create);
+doc.AddSignature("PrimarySignature", cert); // Register certificate with name matching Razor
+
+using var fs = new FileStream(Path.Join(AppDomain.CurrentDomain.BaseDirectory, "razor-test.pdf"), FileMode.Create);
 doc.Begin(fs);
 
-// Page 1: Title and Signature
-{
-    var p = doc.AddPage();
-    p.AddFont("F1", "Helvetica-Bold");
-    p.AddFont("F2", "Helvetica");
-    
-    p.DrawText("F1", 24, 50, 750, "Comprehensive PDFLib Test Document");
-    p.DrawLine(50, 740, 550, 740);
-    
-    p.DrawText("F2", 12, 50, 700, "This document demonstrates all current features of PDFLib:");
-    p.DrawText("F2", 10, 70, 680, "- Text and Font support (Multiple fonts)");
-    p.DrawText("F2", 10, 70, 665, "- Primitive drawing (Lines, Rectangles)");
-    p.DrawText("F2", 10, 70, 650, "- Image embedding (from File and Stream)");
-    p.DrawText("F2", 10, 70, 635, "- Table rendering with borders");
-    p.DrawText("F2", 10, 70, 620, "- Digital Signatures (Cryptographic & Visible)");
-    p.DrawText("F2", 10, 70, 605, "- Stream-based architecture for large documents");
-    p.DrawText("F2", 10, 70, 590, "- Content compression (FlateDecode)");
-
-    p.DrawText("F2", 10, 50, 50, "Signature Area ->");
-    
-    p.Build(compress: true);
-}
-
-// Page 2: Tables and Primitives
-{
-    var p = doc.AddPage();
-    p.AddFont("F1", "Helvetica-Bold");
-    p.AddFont("F2", "Helvetica");
-
-    p.DrawText("F1", 18, 50, 800, "Table Example");
-    
-    var table = new PdfTable([100f, 200f, 100f]);
-    table.FontSize = 10;
-    table.FontAlias = "F2";
-    table.AddRow("ID", "Product Name", "Price");
-    table.AddRow("1", "PDF Generator Pro", "$99.99");
-    table.AddRow("2", "SkiaSharp Wrapper", "$49.50");
-    table.AddRow("3", "Signature Module", "$120.00");
-    table.AddRow("Total", "", "$269.49");
-    
-    p.DrawTable(table, 50, 750);
-    
-    p.DrawText("F1", 18, 50, 600, "Primitives");
-    p.DrawRectangle(50, 500, 100, 50);
-    p.DrawLine(50, 500, 150, 550);
-    p.DrawLine(150, 500, 50, 550);
-
-    p.Build(compress: true);
-}
-
-// Page 3: Images
-{
-    var p = doc.AddPage();
-    p.AddFont("F1", "Helvetica-Bold");
-    
-    p.DrawText("F1", 18, 50, 800, "Image Support");
-
-    // From File
-    using var img1 = PdfImage.FromFile(imagePath);
-    p.DrawText("F1", 12, 50, 750, "Image from file (100x100):");
-    p.DrawImage("ImgFile", img1, 50, 640, 100, 100);
-
-    // From Stream
-    using var memoryStream = new MemoryStream(File.ReadAllBytes(imagePath));
-    using var img2 = PdfImage.FromStream(memoryStream);
-    p.DrawText("F1", 12, 50, 550, "Image from stream (100x100):");
-    p.DrawImage("ImgStream", img2, 50, 440, 100, 100);
-
-    p.Build(compress: true);
-}
-
-// Additional pages to demonstrate streaming
-for (int i = 4; i <= 10; i++)
-{
-    var p = doc.AddPage();
-    p.AddFont("F1", "Helvetica");
-    p.DrawText("F1", 10, 50, 800, $"Page {i} of 10 - Generated by PDFLib Streaming API");
-    p.DrawLine(50, 790, 550, 790);
-    p.Build(compress: true);
-}
+var renderer = new PdfRenderer();
+await renderer.RenderToDocumentAsync<InvoiceComponent>(doc, parameters);
 
 doc.Close();
-Console.WriteLine("Comprehensive test PDF saved to comprehensive-test.pdf");
+
+Console.WriteLine("Razor-based PDF saved to razor-test.pdf");

@@ -8,6 +8,8 @@ public class PdfDictionary : PdfObject
 
     public PdfObject Get(string key) => _dict[key];
 
+    public PdfObject? GetOptional(string key) => _dict.TryGetValue(key, out var val) ? val : null;
+
     public override void WriteTo(BinaryWriter writer)
     {
         writer.Write(ToAscii("<<"));
