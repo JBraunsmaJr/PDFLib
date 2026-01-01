@@ -1,12 +1,13 @@
 ﻿using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Rendering;
+using PDFLib.Enums;
 
 namespace PDFLib.Components;
 
 public class Text : ComponentBase
 {
     [Parameter] public int FontSize { get; set; } = 12;
-    [Parameter] public string Align { get; set; } = "Left";
+    [Parameter] public HorizontalAlignment Align { get; set; } = HorizontalAlignment.Left;
     [Parameter] public string? Color { get; set; }
     [Parameter] public string? BackgroundColor { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }

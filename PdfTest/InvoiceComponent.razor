@@ -1,16 +1,17 @@
 ﻿@using PDFLib.Components
+@using PDFLib.Enums
 
 <Document>
     <Header>
         <Row BackgroundColor="#eeeeee" Padding="5">
             <Image Source="@LogoPath" Width="40" />
-            <Text FontSize="10" Align="Right" Color="blue">Confidential Document - Invoice #@InvoiceId</Text>
+            <Text FontSize="10" Align="HorizontalAlignment.Right" Color="blue">Confidential Document - Invoice #@InvoiceId</Text>
         </Row>
     </Header>
     <Footer>
         <Stack BackgroundColor="#f0f0f0" Padding="10">
-            <Text FontSize="8" Align="Center">Company Address: 123 PDF Street, Digital City</Text>
-            <PageNumber Align="Right" Format="Page {n} of {x}" />
+            <Text FontSize="8" Align="HorizontalAlignment.Center">Company Address: 123 PDF Street, Digital City</Text>
+            <PageNumber Align="HorizontalAlignment.Right" Format="Page {page} of {count}" />
         </Stack>
     </Footer>
     
@@ -20,8 +21,8 @@
                 <Row>
                     <Image Source="@LogoPath" Width="60" />
                     <Stack>
-                        <Text FontSize="24" Align="Right" Color="#FF5733">OFFICIAL INVOICE</Text>
-                        <Text FontSize="16" Align="Right">ID: @InvoiceId</Text>
+                        <Text FontSize="24" Align="HorizontalAlignment.Right" Color="#FF5733">OFFICIAL INVOICE</Text>
+                        <Text FontSize="16" Align="HorizontalAlignment.Right">ID: @InvoiceId</Text>
                     </Stack>
                 </Row>
             </FirstPageHeader>

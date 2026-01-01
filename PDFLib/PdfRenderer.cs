@@ -338,10 +338,10 @@ public class PdfRenderer
 
     private int RenderPageNumber(PdfPage page, XElement element, int x, int y, int width, int pageNumber, int totalPages)
     {
-        var format = element.Attribute("format")?.Value ?? "Page {n} of {x}";
+        var format = element.Attribute("format")?.Value ?? "Page {page} of {count}";
         var align = element.Attribute("align")?.Value ?? "Left";
         var color = element.Attribute("color")?.Value;
-        var text = format.Replace("{n}", pageNumber.ToString()).Replace("{x}", totalPages.ToString());
+        var text = format.Replace("{page}", pageNumber.ToString()).Replace("{count}", totalPages.ToString());
         
         var fontSize = 10;
         var textX = x;
