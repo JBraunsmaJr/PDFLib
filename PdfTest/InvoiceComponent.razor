@@ -2,24 +2,29 @@
 @using PDFLib.Enums
 
 <Document>
+    @*Global Header and Footer. A page can override these values by defining its own Header and/or Footer nodes*@
     <Header>
+        @*Horiontal column. The width of the row is split equally between each "child". 2 items here = 50% width each*@
         <Row BackgroundColor="#eeeeee" Padding="5">
-            <Image Source="@LogoPath" Width="40" />
+            <Image Source="@LogoPath" Width="40"/>
             <Text FontSize="10" Align="HorizontalAlignment.Right" Color="blue">Confidential Document - Invoice #@InvoiceId</Text>
         </Row>
     </Header>
     <Footer>
+        @*Vertical layout*@
         <Stack BackgroundColor="#f0f0f0" Padding="10">
             <Text FontSize="8" Align="HorizontalAlignment.Center">Company Address: 123 PDF Street, Digital City</Text>
-            <PageNumber Align="HorizontalAlignment.Right" Format="Page {page} of {count}" />
+            <PageNumber Align="HorizontalAlignment.Right" Format="Page {page} of {count}"/>
         </Stack>
     </Footer>
     
+    @*The actual content of our document*@
     <ChildContent>
         <Page Padding="40">
+            @*Debating if this makes sense, or just a Header node*@
             <FirstPageHeader>
                 <Row>
-                    <Image Source="@LogoPath" Width="60" />
+                    <Image Source="@LogoPath" Width="60"/>
                     <Stack>
                         <Text FontSize="24" Align="HorizontalAlignment.Right" Color="#FF5733">OFFICIAL INVOICE</Text>
                         <Text FontSize="16" Align="HorizontalAlignment.Right">ID: @InvoiceId</Text>
@@ -34,7 +39,7 @@
                             <TableCell BackgroundColor="gray" Color="white">Service Name</TableCell>
                             <TableCell BackgroundColor="gray" Color="white">Price</TableCell>
                         </TableRow>
-                        @foreach(var item in Items)
+                        @foreach (var item in Items)
                         {
                             <TableRow>
                                 <TableCell>@item.Name</TableCell>
@@ -46,7 +51,7 @@
                             <TableCell BackgroundColor="#f9f9f9" Color="red">@Total.ToString("C")</TableCell>
                         </TableRow>
                     </Table>
-                    
+
                     <Text Color="gray">Please find the detailed breakdown on the next pages.</Text>
                     
                     <Text FontSize="14">Key Deliverables:</Text>
@@ -62,9 +67,11 @@
                         <ListItem>Click the payment link in your email.</ListItem>
                         <ListItem>Confirm transaction.</ListItem>
                     </List>
-
                     <Text>Authorized Signature:</Text>
-                    <Signature X="40" Y="200" Width="250" Height="80" Name="PrimarySignature" />
+                    
+                    @*This is the visual representation of a "signature". 
+                    This example requires a corresponding X509 certificate to be associated to the name PrimarySignature*@
+                    <Signature X="40" Y="200" Width="250" Height="80" Name="PrimarySignature"/>
                 </Stack>
             </ChildContent>
         </Page>
@@ -73,6 +80,7 @@
             <ChildContent>
                 <Stack>
                     <Text FontSize="18" Color="blue">Detailed Terms &amp; Conditions</Text>
+                    @*You can either explicitly define a Text node within a list, or just normal text. Either is acceptable.*@
                     <List Type="ListType.Numbered">
                         <ListItem>All payments should be made in USD.</ListItem>
                         <ListItem><Text>Late payments are subject to a 5% interest fee per month.</Text></ListItem>
