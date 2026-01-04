@@ -1,0 +1,32 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <PackageReference Include="BenchmarkDotNet" Version="0.15.8" />
+      <PackageReference Include="DinkToPdf" Version="1.0.8" />
+      <PackageReference Include="IronPdf" Version="2025.12.2" />
+      <PackageReference Include="IronPdf.Linux" Version="2025.12.2" />
+      <PackageReference Include="libwkhtmltox-64" Version="1.0.0" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <None Remove="sample.html" />
+      <AdditionalFiles Include="sample.html">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </AdditionalFiles>
+    </ItemGroup>
+
+    <ItemGroup>
+      <Content Include="..\.dockerignore">
+        <Link>.dockerignore</Link>
+      </Content>
+    </ItemGroup>
+
+</Project>

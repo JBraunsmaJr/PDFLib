@@ -1,0 +1,6 @@
+﻿services:
+  benchmarks:
+    image: benchmarks
+    build:
+      context: .
+

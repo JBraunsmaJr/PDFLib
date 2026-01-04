@@ -1,0 +1,19 @@
+﻿services:
+  webapplication1:
+    image: webapplication1
+    build:
+      context: .
+      dockerfile: WebApplication1/Dockerfile
+
+  pdfapi:
+    image: pdfapi
+    build:
+      context: .
+      dockerfile: PDFApi/Dockerfile
+
+  benchmarks:
+    image: benchmarks
+    build:
+      context: .
+      dockerfile: Benchmarks/Dockerfile
+

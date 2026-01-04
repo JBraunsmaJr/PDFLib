@@ -1,0 +1,230 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>Invoice #12345</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, Helvetica, sans-serif;
+            color: #000;
+        }
+
+        .page {
+            width: 8.5in;
+            height: 11in;
+            padding: 40px 50px;
+            box-sizing: border-box;
+            page-break-after: always;
+            position: relative;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+
+        .logo {
+            width: 80px;
+            height: 120px;
+            background: blue;
+        }
+
+        .invoice-title {
+            text-align: right;
+        }
+
+        .invoice-title h1 {
+            margin: 0;
+            color: #ff4d2d;
+            font-size: 28px;
+            letter-spacing: 1px;
+        }
+
+        .invoice-title .id {
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        .divider {
+            border-bottom: 2px solid #444;
+            margin: 20px 0;
+        }
+
+        h2 {
+            margin-bottom: 5px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+
+        table th,
+        table td {
+            border: 1px solid #333;
+            padding: 8px 10px;
+            font-size: 14px;
+        }
+
+        table th {
+            background: #777;
+            color: #fff;
+            text-align: left;
+        }
+
+        .total {
+            color: red;
+            font-weight: bold;
+        }
+
+        ul {
+            margin: 5px 0 15px 20px;
+        }
+
+        li {
+            margin-bottom: 5px;
+        }
+
+        .signature-box {
+            width: 320px;
+            height: 80px;
+            border: 1px solid #000;
+            padding: 8px;
+            font-size: 12px;
+            margin-top: 10px;
+        }
+
+        .footer {
+            position: absolute;
+            bottom: 30px;
+            left: 50px;
+            right: 50px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+        }
+
+        /* Page 2 */
+        .confidential {
+            text-align: right;
+            color: blue;
+            font-size: 14px;
+        }
+
+        .terms h2 {
+            color: blue;
+        }
+
+        .highlight {
+            background: yellow;
+            padding: 8px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<body>
+
+<!-- ================= PAGE 1 ================= -->
+<div class="page">
+
+    <div class="header">
+        <div class="logo"></div>
+        <div class="invoice-title">
+            <h1>OFFICIAL INVOICE</h1>
+            <div class="id">ID: 12345</div>
+        </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <h2>Summary of Services:</h2>
+
+    <table>
+        <tr>
+            <th>Service Name</th>
+            <th>Price</th>
+        </tr>
+        <tr>
+            <td>Consulting Services</td>
+            <td>$1,500.00</td>
+        </tr>
+        <tr>
+            <td>Software License</td>
+            <td>$499.99</td>
+        </tr>
+        <tr>
+            <td>Hardware Support</td>
+            <td>$250.00</td>
+        </tr>
+        <tr>
+            <td><strong>Total Amount Due</strong></td>
+            <td class="total">$2,249.99</td>
+        </tr>
+    </table>
+
+    <p>Please find the detailed breakdown on the next pages.</p>
+
+    <h3>Key Deliverables:</h3>
+    <ul>
+        <li>PDF Generation Engine</li>
+        <li>Razor Component Support</li>
+        <li>Styling and Formatting API</li>
+    </ul>
+
+    <h3>Payment Steps:</h3>
+    <ol>
+        <li>Review the invoice details.</li>
+        <li>Click the payment link in your email.</li>
+        <li>Confirm transaction.</li>
+    </ol>
+
+    <h3>Authorized Signature:</h3>
+    <div class="signature-box">
+        Digitally signed by: Test Signer<br />
+        Date: 2025.12.31 17:47:48 -05:00
+    </div>
+
+    <div class="footer">
+        <div>Company Address: 123 PDF Street, Digital City</div>
+        <div>Page 1 of 2</div>
+    </div>
+</div>
+
+<!-- ================= PAGE 2 ================= -->
+<div class="page">
+
+    <div class="header">
+        <div class="logo"></div>
+        <div class="confidential">
+            Confidential Document - Invoice #12345
+        </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="terms">
+        <h2>Detailed Terms &amp; Conditions</h2>
+        <ol>
+            <li>All payments should be made in USD.</li>
+            <li>Late payments are subject to a 5% interest fee per month.</li>
+            <li>Refund policy: No refunds for consulting services once provided.</li>
+            <li>This page uses the global header and footer defined in the Document node.</li>
+        </ol>
+
+        <div class="highlight">
+            Important: Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
+        </div>
+    </div>
+
+    <div class="footer">
+        <div>Company Address: 123 PDF Street, Digital City</div>
+        <div>Page 2 of 2</div>
+    </div>
+</div>
+
+</body>
+</html>
