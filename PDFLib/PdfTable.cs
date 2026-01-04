@@ -49,7 +49,7 @@ public class PdfTable
                 cellLines.Add(lines);
                 
                 var cellHeight = lines.Count * (FontSize + 2) + (Padding * 2);
-                if (cellHeight > rowMaxHeight) rowMaxHeight = (int)cellHeight;
+                if (cellHeight > rowMaxHeight) rowMaxHeight = cellHeight;
             }
 
             var currentX = x;

@@ -4,6 +4,14 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PDFLib", "PDFLib\PDFLib.csp
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PdfTest", "PdfTest\PdfTest.csproj", "{F3650EBE-DD76-48C7-9FD4-D1724472BB01}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PDFLib.Console", "PDFLib.Console\PDFLib.Console.csproj", "{B72BB04C-49B8-4A23-9E06-56CF42EF04A1}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{D3E5D333-6499-428D-9511-69F8765BCD6B}"
+	ProjectSection(SolutionItems) = preProject
+		compose.yaml = compose.yaml
+		Readme.md = Readme.md
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -18,5 +26,9 @@ Global
 		{F3650EBE-DD76-48C7-9FD4-D1724472BB01}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{F3650EBE-DD76-48C7-9FD4-D1724472BB01}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{F3650EBE-DD76-48C7-9FD4-D1724472BB01}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B72BB04C-49B8-4A23-9E06-56CF42EF04A1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B72BB04C-49B8-4A23-9E06-56CF42EF04A1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B72BB04C-49B8-4A23-9E06-56CF42EF04A1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B72BB04C-49B8-4A23-9E06-56CF42EF04A1}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

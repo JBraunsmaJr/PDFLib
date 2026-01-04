@@ -1,4 +1,5 @@
-﻿using System.Text;
+﻿using System.IO.Compression;
+using System.Text;
 using PDFLib.Models;
 
 namespace PDFLib;
@@ -160,7 +161,7 @@ public class PdfPage
         if (compress)
         {
             using var ms = new MemoryStream();
-            using (var ds = new System.IO.Compression.ZLibStream(ms, System.IO.Compression.CompressionLevel.Optimal))
+            using (var ds = new ZLibStream(ms, CompressionLevel.Optimal))
             {
                 _tempStream.CopyTo(ds);
             }

@@ -1,5 +1,7 @@
-﻿using System.Text;
+﻿using System.Security.Cryptography;
+using System.Security.Cryptography.Pkcs;
 using System.Security.Cryptography.X509Certificates;
+using System.Text;
 using PDFLib.Models;
 
 namespace PDFLib;
@@ -15,10 +17,6 @@ public class PdfDocument : IDisposable
     private Stream? _outputStream;
     private BinaryWriter? _writer;
     private bool _isStreaming;
-
-    public PdfDocument()
-    {
-    }
 
     private readonly Dictionary<string, (X509Certificate2 Cert, PdfSignature Sig, PdfFormXObject? Ap, PdfArray? Rect)> _signatures = new();
     private readonly Dictionary<string, PdfDictionary> _signatureFields = new();
@@ -288,7 +286,7 @@ public class PdfDocument : IDisposable
         _outputStream.Write(byteRangeBytes, 0, byteRangeBytes.Length);
 
         byte[] hash;
-        using (var sha = System.Security.Cryptography.SHA256.Create())
+        using (var sha = SHA256.Create())
         {
             _outputStream.Seek(0, SeekOrigin.Begin);
             
@@ -321,11 +319,11 @@ public class PdfDocument : IDisposable
         }
 
         // Sign
-        var contentInfo = new System.Security.Cryptography.Pkcs.ContentInfo(hash);
-        var signedCms = new System.Security.Cryptography.Pkcs.SignedCms(contentInfo, detached: true);
-        var cmsSigner = new System.Security.Cryptography.Pkcs.CmsSigner(certificate)
+        var contentInfo = new ContentInfo(hash);
+        var signedCms = new SignedCms(contentInfo, detached: true);
+        var cmsSigner = new CmsSigner(certificate)
         {
-            DigestAlgorithm = new System.Security.Cryptography.Oid("2.16.840.1.101.3.4.2.1") // SHA256
+            DigestAlgorithm = new Oid("2.16.840.1.101.3.4.2.1") // SHA256
         };
 
         signedCms.ComputeSignature(cmsSigner);

@@ -6,7 +6,7 @@ namespace PDFLib.Components;
 public class Row : ComponentBase
 {
     [Parameter] public string? BackgroundColor { get; set; }
-    [Parameter] public int Padding { get; set; } = 0;
+    [Parameter] public int Padding { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
     protected override void BuildRenderTree(RenderTreeBuilder builder)

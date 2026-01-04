@@ -1,5 +1,6 @@
-﻿using SkiaSharp;
+﻿using System.IO.Compression;
 using PDFLib.Models;
+using SkiaSharp;
 
 namespace PDFLib;
 
@@ -93,7 +94,7 @@ public class PdfImage : PdfObject, IDisposable
 
         var tempFile = Path.GetTempFileName();
         using (var fs = File.Create(tempFile))
-        using (var ds = new System.IO.Compression.ZLibStream(fs, System.IO.Compression.CompressionLevel.Optimal))
+        using (var ds = new ZLibStream(fs, CompressionLevel.Optimal))
         {
             /*
                 Ensure we're working with a known format (Rgba8888)

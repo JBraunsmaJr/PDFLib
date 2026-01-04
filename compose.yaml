@@ -1,0 +1,7 @@
+﻿services:
+  pdflib.console:
+    image: pdflib.console
+    build:
+      context: .
+      dockerfile: PDFLib.Console/Dockerfile
+
