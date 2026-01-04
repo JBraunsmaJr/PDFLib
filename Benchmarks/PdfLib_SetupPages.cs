@@ -4,13 +4,16 @@ using PDFLib.Console.RPC;
 namespace Benchmarks;
 
 /// <summary>
-/// This test is slim, in which it ONLY tests the HTML to PDF component of PDFLib.
+/// This test encompasses the following:
+///
+/// <list type="number">
+///     <item>Creating a "new page"</item>
+///     <item>Invoking the HTML to PDF functionality</item>
+/// </list>
+///
+/// This should help determine how much overhead there is when processing concurrent requests (page per request)
 /// </summary>
-/// <remarks>
-/// The memory consumption will be relatively higher than webkit/dink because of the base64 encoded data. However,
-/// the goal is to support streaming. Since we process 1MB at a time, in theory we shouldn't surpass 1MB (by much? if at all?)
-/// </remarks>
-public class PdfLib : IConverter
+public class PdfLib_SetupPages : IConverter
 {
     private ChromiumBrowser _browser;
     private MemoryStream _memoryStream;
@@ -18,14 +21,14 @@ public class PdfLib : IConverter
     
     public async Task ConvertAsync(string html)
     {
-        await _page.PrintToPdfAsync(_memoryStream);
+        _page = await _browser.CreatePageAsync();
+        await _page.PrintToPdfAsync(html, _memoryStream);
         await _memoryStream.FlushAsync();
+        await _page.DisposeAsync();
     }
     public async Task IterationSetupAsync(string html)
     {
         _memoryStream = new MemoryStream();
-        _page = await _browser.CreatePageAsync();
-        await _page.SetContentAsync(html);
     }
 
     public async Task GlobalSetupAsync()
@@ -49,7 +52,7 @@ public class PdfLib : IConverter
 
     public async Task GlobalCleanupAsync()
     {
-        //_browser?.Dispose();
+        _browser?.Dispose();
         await Task.CompletedTask;
     }
 }

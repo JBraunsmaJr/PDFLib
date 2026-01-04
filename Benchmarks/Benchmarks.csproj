@@ -17,4 +17,11 @@
       <ProjectReference Include="..\PDFLib.Console\PDFLib.Console.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+      <None Remove="large-sample.html" />
+      <AdditionalFiles Include="large-sample.html">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </AdditionalFiles>
+    </ItemGroup>
+
 </Project>

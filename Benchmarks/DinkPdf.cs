@@ -6,15 +6,22 @@ namespace Benchmarks;
 public class DinkPdf : IConverter
 {
     private readonly BasicConverter _converter;
+    private HtmlToPdfDocument? _doc;
     
     public DinkPdf()
     {
         _converter = new BasicConverter(new PdfTools());
     }
     
-    public void Convert(string html)
+    public Task ConvertAsync(string html)
     {
-        var doc = new HtmlToPdfDocument
+        _converter.Convert(_doc);
+        return Task.CompletedTask;
+    }
+
+    public Task IterationSetupAsync(string html)
+    {
+        _doc = new HtmlToPdfDocument
         {
             GlobalSettings =
             {
@@ -39,23 +46,22 @@ public class DinkPdf : IConverter
                 }
             }
         };
-        
-        _converter.Convert(doc);
+        return Task.CompletedTask;
     }
 
-    public void IterationSetup()
+    public Task GlobalSetupAsync()
     {
+        return Task.CompletedTask;
     }
 
-    public void GlobalSetup()
+    public Task IterationCleanupAsync()
     {
+        _doc = null;
+        return Task.CompletedTask;
     }
 
-    public void IterationCleanup()
+    public Task GlobalCleanupAsync()
     {
-    }
-
-    public void GlobalCleanup()
-    {
+        return Task.CompletedTask;
     }
 }

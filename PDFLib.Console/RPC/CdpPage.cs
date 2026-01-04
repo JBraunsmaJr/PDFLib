@@ -32,15 +32,15 @@ public class CdpPage : IAsyncDisposable
         }
     }
 
-    private async Task SetContentAsync(string html)
+    public async Task SetContentAsync(string html)
     {
         await _dispatcher.SendCommandAsync("Page.enable", null, _sessionId);
         var frameTree = await _dispatcher.SendCommandAsync("Page.getFrameTree", null, _sessionId);
         var frameId = frameTree.GetProperty("frameTree").GetProperty("frame").GetProperty("id").GetString();
         await _dispatcher.SendCommandAsync("Page.setDocumentContent", new { frameId, html }, _sessionId);
         
-        // Wait for the page to be "ready"
-        for (int i = 0; i < 50; i++)
+        // TODO: This is a potential issue, could take a bit of time for page to actually become ready
+        for (var i = 0; i < 50; i++)
         {
             var readyStateRes = await _dispatcher.SendCommandAsync("Runtime.evaluate", new { expression = "document.readyState" }, _sessionId);
             var readyState = readyStateRes.GetProperty("result").GetProperty("value").GetString();
@@ -49,59 +49,15 @@ public class CdpPage : IAsyncDisposable
         }
     }
 
-    /// <remarks>
-    /// To avoid loading a potentially large PDF info memory, we'll directly
-    /// write to a destination stream which can be streamed/chunkcated on the fly to consumer.
-    /// 
-    /// We do NOT want to load the PDF in its entirety into memory. This would cause memory spikes which we're trying to avoid, especially for larger
-    /// documents (which might cause an OOM issue)
-    /// </remarks>
-    /// <param name="html"></param>
-    /// <param name="destinationStream"></param>
-    /// <param name="cancellationToken"></param>
-    /// <example>
-    /// <code>
-    /// await using var page = await browser.CreatePageAsync();
-    /// await page.SetContentAsync(largeHtml);
-    /// using var fileStream = File.Create("huge-report.pdf");
-    /// await page.PrintToPdfAsync(fileStream);
-    /// </code>
-    /// </example>
-    /// <example>
-    /// <code>
-    /// [HttpGet("download-pdf")]
-    /// public async Task GetPdf()
-    /// {
-    ///   Response.ContentType = "application/pdf";
-    ///   Response.Headers.Add("Content-Disposition", "attachment; filename=report.pdf");
-    ///   await using var page = await _browser.CreatePageAsync();
-    ///   await page.PrintToPdfAsync(Response.Body);
-    /// }
-    /// </code>
-    /// </example>
-    /// <example>
-    /// <code>
-    /// using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-    /// await page.PrintToPdfAsync(myFileStream, cts.Token); // if > 60 seconds - automatically throws
-    /// </code>
-    /// </example>
-    /// <example>
-    /// <code>
-    /// [HttpGet("download-pdf")]
-    /// public async Task GetPdf(CancellationToken clientClosedToken)
-    /// {
-    ///    using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(2));
-    ///    using var linkedCts = new CancellationTokenSource.CreateLinkedTokenSource(clientClosedToken, timeoutCts.Token);
-    /// 
-    ///    await page.PrintToPdfAsync(Response.Body, null, linkedCts.Token);
-    /// }
-    /// </code>
-    /// </example>
     public async Task PrintToPdfAsync(string html, Stream destinationStream, CancellationToken cancellationToken = default)
     {
-        await _semaphore.WaitAsync(cancellationToken);
-
         await SetContentAsync(html);
+        await PrintToPdfAsync(destinationStream, cancellationToken);
+    }
+
+    public async Task PrintToPdfAsync(Stream destinationStream, CancellationToken cancellationToken = default)
+    {
+        await _semaphore.WaitAsync(cancellationToken);
         
         // ReturnAsStream ensures we don't crash on 150+ page documents
         var result = await _dispatcher.SendCommandAsync("Page.printToPDF", new 

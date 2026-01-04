@@ -12,6 +12,16 @@ public class ChromiumBrowser : IDisposable
     private SemaphoreSlim _renderSemaphore;
     private BrowserOptions _options;
 
+    
+    public static ChromiumBrowser Instance
+    {
+        get
+        {
+            _instance ??= new ChromiumBrowser();
+            return _instance;
+        }
+    }
+    private static bool _hasStarted = false;
     private static ChromiumBrowser? _instance;
     
     [DllImport("libc", SetLastError = true)] private static extern int pipe(int[] pipefd);
@@ -19,14 +29,9 @@ public class ChromiumBrowser : IDisposable
 
     public ChromiumBrowser()
     {
-        if (_instance is not null)
-        {
-            throw new InvalidOperationException("An instance of Chromium Browser already exists.");
-        }
-        
-        _instance = this;
+        if (_instance is null) _instance = this;
     }
-
+    
     /// <summary>
     /// Start the Chromium browser process with the given options
     /// </summary>
@@ -34,6 +39,9 @@ public class ChromiumBrowser : IDisposable
     /// <exception cref="Exception"></exception>
     public async Task StartAsync(BrowserOptions? options)
     {
+        if (_hasStarted) return;
+        _hasStarted = true;
+        
         _options = options ?? new BrowserOptions();
         _renderSemaphore = new(_options.MaxConcurrentRenders);
         

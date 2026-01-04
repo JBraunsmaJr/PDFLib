@@ -2,9 +2,9 @@ namespace Benchmarks;
 
 public interface IConverter
 {
-    void Convert(string html);
-    void IterationSetup();
-    void GlobalSetup();
-    void IterationCleanup();
-    void GlobalCleanup();
+    Task ConvertAsync(string html);
+    Task IterationSetupAsync(string html);
+    Task GlobalSetupAsync();
+    Task IterationCleanupAsync();
+    Task GlobalCleanupAsync();
 }
