@@ -4,4 +4,8 @@
     build:
       context: .
       dockerfile: PDFLib.Console/Dockerfile
-
+  pdflib.benchmarks:
+    image: pdflib-benchmarks
+    build:
+      context: .
+      dockerfile: ./Benchmarks/Dockerfile
