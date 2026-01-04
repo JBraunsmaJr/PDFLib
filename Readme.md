@@ -35,7 +35,8 @@ IronPDF, based on some snooping, appears to have some form of C++ shared librari
 Google suggests using Puppeteer, or websockets. However, I suspect using a named pipe (linux only) will be
 sufficient.
 
-The `--remote-debugging-pipe` flag leverages file descriptors 3 (Standard in/out), and 4.
+The `--remote-debugging-pipe` flag leverages file descriptors 3 (Standard in/out), and 4. .NET only supports 0, 1, and 2.
+So we have to redirect things.
 
 ## Base64
 
