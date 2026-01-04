@@ -55,3 +55,12 @@ Apparently the following errors are "normal" and do not impact PDF generation
 [0104/155522.471026:ERROR:dbus/bus.cc:406] Failed to connect to the bus: Failed to connect to socket /run/dbus/system_bus_socket: No such file or directory
 [0104/155522.567381:WARNING:device/bluetooth/dbus/bluez_dbus_manager.cc:209] Floss manager service not available, cannot set Floss enable/disable.
 ```
+
+## Benchmarks currently
+
+Although the PdfLib is faster than DinkToPdf, it uses more memory for the time being.
+
+| Method | Mean      | Error    | StdDev   | Median    | Allocated |
+|------- |----------:|---------:|---------:|----------:|----------:|
+| Dink   | 241.81 ms | 4.822 ms | 8.445 ms | 243.88 ms | 119.41 KB |                                                                                                                                      
+| PdfLib |  46.49 ms | 2.366 ms | 6.863 ms |  43.90 ms | 737.88 KB |
