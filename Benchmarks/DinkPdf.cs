@@ -15,13 +15,7 @@ public class DinkPdf : IConverter
     
     public Task ConvertAsync(string html)
     {
-        _converter.Convert(_doc);
-        return Task.CompletedTask;
-    }
-
-    public Task IterationSetupAsync(string html)
-    {
-        _doc = new HtmlToPdfDocument
+        var doc = new HtmlToPdfDocument
         {
             GlobalSettings =
             {
@@ -46,6 +40,12 @@ public class DinkPdf : IConverter
                 }
             }
         };
+        _converter.Convert(doc);
+        return Task.CompletedTask;
+    }
+
+    public Task IterationSetupAsync(string html)
+    {
         return Task.CompletedTask;
     }
 

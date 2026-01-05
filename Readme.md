@@ -60,7 +60,8 @@ Apparently the following errors are "normal" and do not impact PDF generation
 
 Although the PdfLib is faster than DinkToPdf, it uses more memory for the time being.
 
-| Method | Mean      | Error    | StdDev   | Median    | Allocated |
-|------- |----------:|---------:|---------:|----------:|----------:|
-| Dink   | 241.81 ms | 4.822 ms | 8.445 ms | 243.88 ms | 119.41 KB |                                                                                                                                      
-| PdfLib |  46.49 ms | 2.366 ms | 6.863 ms |  43.90 ms | 737.88 KB |
+| Method | FileName          | Mean    | Error    | StdDev   | Median   | Gen0      | Allocated  |
+|------- |------------------ |--------:|---------:|---------:|---------:|----------:|-----------:|
+| Dink   | large-sample.html | 1.138 s | 0.0477 s | 0.1376 s | 1.0577 s |         - |  556.66 KB |                                                                                                                                                                                                                                                                                                                                
+| PdfLib | large-sample.html | 1.009 s | 0.0436 s | 0.1236 s | 0.9559 s | 1000.0000 | 9031.21 KB |
+

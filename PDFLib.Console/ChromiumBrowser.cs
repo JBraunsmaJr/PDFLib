@@ -21,7 +21,7 @@ public class ChromiumBrowser : IDisposable
             return _instance;
         }
     }
-    private static bool _hasStarted = false;
+    private static bool _hasStarted;
     private static ChromiumBrowser? _instance;
     
     [DllImport("libc", SetLastError = true)] private static extern int pipe(int[] pipefd);
@@ -54,7 +54,7 @@ public class ChromiumBrowser : IDisposable
         fcntl(pipeOut[0], 2, 0); 
         fcntl(pipeIn[1], 2, 0);
 
-        var shellCmd = $"exec 3<&{pipeOut[0]} 4>&{pipeIn[1]}; exec {_options.BinaryPath} --headless --remote-debugging-pipe --no-sandbox --disable-gpu --disable-dev-shm-usage --disable-software-rasterizer";
+        var shellCmd = $"exec 3<&{pipeOut[0]} 4>&{pipeIn[1]}; exec {_options.BinaryPath} --headless --remote-debugging-pipe --no-sandbox --disable-gpu --disable-dev-shm-usage --disable-software-rasterizer --disable-extensions --disable-background-networking --disable-sync --disable-default-apps --mute-audio";
         
         _process = Process.Start(new ProcessStartInfo
         {

@@ -1,4 +1,5 @@
-﻿using BenchmarkDotNet.Configs;
+﻿using Benchmarks;
+using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Running;
 using BenchmarkDotNet.Validators;
 

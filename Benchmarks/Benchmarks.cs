@@ -7,9 +7,8 @@ public class Benchmarks
 {
     private IConverter _dink;
     private IConverter _pdfLib;
-    private IConverter _pdfLibSetupPages;
 
-    [Params("sample.html", "large-sample.html")]
+    [Params("sample.html","large-sample.html", "x2-large-sample.html", "x3-large-sample.html")]
     public string FileName;
 
     private string _currentHtml;
@@ -18,7 +17,6 @@ public class Benchmarks
     {
         yield return _dink;
         yield return _pdfLib;
-        yield return _pdfLibSetupPages;
     }
     
     [GlobalSetup]
@@ -26,7 +24,6 @@ public class Benchmarks
     {
         _dink = new DinkPdf();
         _pdfLib = new PdfLib();
-        _pdfLibSetupPages = new PdfLib_SetupPages();
 
         foreach(var converter in Converters()) converter.GlobalSetupAsync().GetAwaiter().GetResult();
     }
@@ -60,11 +57,5 @@ public class Benchmarks
     public async Task PdfLib()
     {
         await _pdfLib.ConvertAsync(_currentHtml);
-    }
-
-    [Benchmark]
-    public async Task PdfLib_SetupPages()
-    {
-        await _pdfLibSetupPages.ConvertAsync(_currentHtml);
     }
 }

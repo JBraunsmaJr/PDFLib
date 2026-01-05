@@ -1,5 +1,4 @@
 using PDFLib.Console;
-using PDFLib.Console.RPC;
 
 namespace Benchmarks;
 
@@ -14,18 +13,23 @@ public class PdfLib : IConverter
 {
     private ChromiumBrowser _browser;
     private MemoryStream _memoryStream;
-    private CdpPage _page;
     
     public async Task ConvertAsync(string html)
     {
-        await _page.PrintToPdfAsync(_memoryStream);
-        await _memoryStream.FlushAsync();
+        var page = await _browser.CreatePageAsync();
+        try
+        {
+            await page.PrintToPdfAsync(html, _memoryStream);
+            await _memoryStream.FlushAsync();
+        }
+        finally
+        {
+            await page.DisposeAsync();
+        }
     }
     public async Task IterationSetupAsync(string html)
     {
         _memoryStream = new MemoryStream();
-        _page = await _browser.CreatePageAsync();
-        await _page.SetContentAsync(html);
     }
 
     public async Task GlobalSetupAsync()
@@ -41,10 +45,6 @@ public class PdfLib : IConverter
     public async Task IterationCleanupAsync()
     {
         _memoryStream?.Close();
-        if (_page != null)
-        {
-            await _page.DisposeAsync();
-        }
     }
 
     public async Task GlobalCleanupAsync()

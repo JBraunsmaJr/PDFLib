@@ -15,10 +15,17 @@
     </ItemGroup>
 
     <ItemGroup>
-      <None Remove="sample.html" />
-      <AdditionalFiles Include="sample.html">
+      <AdditionalFiles Include="samples\sample.html">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </AdditionalFiles>
+      <AdditionalFiles Include="samples\x3-large-sample.html">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </AdditionalFiles>
+      <None Remove="sample.html" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <Folder Include="test-out\" />
     </ItemGroup>
 
 </Project>
