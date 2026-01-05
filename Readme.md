@@ -58,10 +58,17 @@ Apparently the following errors are "normal" and do not impact PDF generation
 
 ## Benchmarks currently
 
-Although the PdfLib is faster than DinkToPdf, it uses more memory for the time being.
+Would appear as the file increases in size, PdfLib decreases in performance. Requires further investigation, quite possible it's the 
+CDP overhead / allocations.
 
-| Method | FileName          | Mean    | Error    | StdDev   | Median   | Gen0      | Allocated  |
-|------- |------------------ |--------:|---------:|---------:|---------:|----------:|-----------:|
-| Dink   | large-sample.html | 1.138 s | 0.0477 s | 0.1376 s | 1.0577 s |         - |  556.66 KB |                                                                                                                                                                                                                                                                                                                                
-| PdfLib | large-sample.html | 1.009 s | 0.0436 s | 0.1236 s | 0.9559 s | 1000.0000 | 9031.21 KB |
+| Method | FileName             | Mean       | Error     | StdDev    | Median     | Gen0      | Gen1      | Allocated   |
+|------- |--------------------- |-----------:|----------:|----------:|-----------:|----------:|----------:|------------:|
+| Dink   | large-sample.html    | 1,463.7 ms |  88.62 ms | 261.30 ms | 1,477.9 ms |         - |         - |   556.66 KB |                                                                                 
+| PdfLib | large-sample.html    | 1,412.9 ms |  83.36 ms | 245.79 ms | 1,521.8 ms | 1000.0000 |         - |  9023.87 KB |
+| Dink   | sample.html          |   226.9 ms |   4.53 ms |   6.04 ms |   224.9 ms |         - |         - |   119.41 KB |
+| PdfLib | sample.html          |   114.3 ms |   7.00 ms |  20.31 ms |   114.7 ms |         - |         - |    87.59 KB |
+| Dink   | x2-large-sample.html | 2,067.1 ms | 112.95 ms | 318.59 ms | 1,887.9 ms |         - |         - |  1006.61 KB |
+| PdfLib | x2-large-sample.html | 1,732.4 ms |  11.41 ms |  10.67 ms | 1,733.7 ms | 1000.0000 |         - | 19073.21 KB |
+| Dink   | x3-large-sample.html | 2,611.6 ms |   9.80 ms |   9.17 ms | 2,611.5 ms |         - |         - |  1457.91 KB |
+| PdfLib | x3-large-sample.html | 3,104.5 ms |  66.57 ms | 183.36 ms | 3,062.2 ms | 3000.0000 | 2000.0000 | 21212.35 KB |
 
