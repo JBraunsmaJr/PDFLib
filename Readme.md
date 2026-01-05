@@ -29,7 +29,7 @@ but that quickly changes as the workload size increases.
 ## The Renderer / Headless Chromium
 
 [Headless Chromium](https://github.com/chromium/chromium/blob/main/headless/README.md) is a package
-google made available which contains the Blink and V8 engines, 200MB than full browser.
+google made available which contains the Blink and V8 engines, 200MB less than full browser.
 
 ## Interop
 
