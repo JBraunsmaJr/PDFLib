@@ -1,5 +1,7 @@
 ﻿# PDF Lib
 
+Join me in the descent into madness, as I explore the possibilities of PDF generation.
+
 Honestly, this was a product of me being bored and wondering what it would take
 to generate a PDF without using external libraries. It... is... interesting to say the least.
 
@@ -12,14 +14,15 @@ This project is still in its early stages and is not yet ready for production us
 
 # Overview
 
-Currently, you can generate a PDF programmatically via the API, or alternatively use
-Razor syntax (which I think is preferrable).
+The C# Project **PDFLib** is a library which manually crafts PDFs, without using third-party libraries. Went on to explore
+the possibility of using Razor syntax to generate PDFs as well, instead of pursuing a fluent-api. After playing with the idea,
+I realized the difficulty in pursuing styling. Developers would also require a "PDF" version of their webpages, which is not ideal.
 
-By using the Razor API you can use familiar markup to generate your PDFs. All without external
-dependencies on a web-browser.
+To leverage existing HTML/CSS, one requires a renderer. WebKit and Blink are the two most popular choices. For the time being,
+I've opted to use Chrome's headless Chromium since it's said to be pixel-perfect when creating PDFs.
 
-Example the PDF produced via the PdfTest project: [PDF Example](./razor-test.pdf)
-
+**PDFLib.Console** is where Chromium is being explored. Interestingly enough, for small workloads it outperforms DinkToPdf,
+but that quickly changes as the workload size increases. 
 
 # Research / Path
 
@@ -33,7 +36,7 @@ google made available which contains the Blink and V8 engines, 200MB than full b
 IronPDF, based on some snooping, appears to have some form of C++ shared libraries they created.
 
 Google suggests using Puppeteer, or websockets. However, I suspect using a named pipe (linux only) will be
-sufficient.
+enough.
 
 The `--remote-debugging-pipe` flag leverages file descriptors 3 (Standard in/out), and 4. .NET only supports 0, 1, and 2.
 So we have to redirect things.
