@@ -75,3 +75,9 @@ CDP overhead / allocations.
 | Dink   | x3-large-sample.html | 2,611.6 ms |   9.80 ms |   9.17 ms | 2,611.5 ms |         - |         - |  1457.91 KB |
 | PdfLib | x3-large-sample.html | 3,104.5 ms |  66.57 ms | 183.36 ms | 3,062.2 ms | 3000.0000 | 2000.0000 | 21212.35 KB |
 
+| Color | Lib       |
+| --- |-----------|
+| Green | DinkToPdf |
+| Black | PDFLib    |
+
+![Benchmark](./assets/performance-chart.png)
