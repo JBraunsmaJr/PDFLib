@@ -22,6 +22,14 @@
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </AdditionalFiles>
       <None Remove="sample.html" />
+      <None Remove="samples\js-variable-wait.html" />
+      <AdditionalFiles Include="samples\js-variable-wait.html">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </AdditionalFiles>
+      <None Remove="samples\network-wait.html" />
+      <AdditionalFiles Include="samples\network-wait.html">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </AdditionalFiles>
     </ItemGroup>
 
     <ItemGroup>

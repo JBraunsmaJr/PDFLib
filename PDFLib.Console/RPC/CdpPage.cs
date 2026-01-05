@@ -262,7 +262,15 @@ public class CdpPage : IAsyncDisposable
                     var res = await _dispatcher.SendCommandAsync("Runtime.evaluate", new { expression = _options.WaitVariable }, _sessionId);
                     if (res.TryGetProperty(ResultBytes, out var result) && result.TryGetProperty(ValueBytes, out var value))
                     {
-                        if (value.ValueEquals(_options.WaitVariableValue)) return;
+                        var match = value.ValueKind switch
+                        {
+                            JsonValueKind.String => value.ValueEquals(_options.WaitVariableValue),
+                            JsonValueKind.True => _options.WaitVariableValue == "true",
+                            JsonValueKind.False => _options.WaitVariableValue == "false",
+                            JsonValueKind.Number => value.GetRawText() == _options.WaitVariableValue,
+                            _ => false
+                        };
+                        if (match) return;
                     }
                 }
 

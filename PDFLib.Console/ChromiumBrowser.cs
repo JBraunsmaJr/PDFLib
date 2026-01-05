@@ -21,7 +21,7 @@ public class ChromiumBrowser : IDisposable
             return _instance;
         }
     }
-    private static bool _hasStarted;
+    private bool _hasStarted;
     private static ChromiumBrowser? _instance;
     
     [DllImport("libc", SetLastError = true)] private static extern int pipe(int[] pipefd);
@@ -83,9 +83,33 @@ public class ChromiumBrowser : IDisposable
         return new CdpPage(_dispatcher, sessionId, targetId, _renderSemaphore, _options);
     }
 
+    private bool _disposed;
+
     public void Dispose()
     {
-        _process?.Kill(true);
-        _process?.Dispose();
+        if (_disposed) return;
+        _disposed = true;
+
+        if (_process != null)
+        {
+            try
+            {
+                if (!_process.HasExited)
+                {
+                    _process.Kill(true);
+                }
+            }
+            catch (InvalidOperationException) { /* Already exited or never started */ }
+            catch (Exception) { /* Best effort */ }
+            finally
+            {
+                _process.Dispose();
+            }
+        }
+
+        if (_instance == this)
+        {
+            _instance = null;
+        }
     }
 }

@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Network Idle Wait Test</title>
+</head>
+<body>
+    <h1>Waiting for Network Idle...</h1>
+    <p id="status">Requests in progress...</p>
+    <div id="content"></div>
+    <script>
+        async function makeRequest(id) {
+            console.log(`Starting request ${id}`);
+            // We use a mock API or just a delay if we could, 
+            // but for NetworkIdle we need actual network activity.
+            // Fetching a real (but small) resource multiple times.
+            await fetch('https://www.google.com/favicon.ico?cachebust=' + Math.random());
+            console.log(`Finished request ${id}`);
+        }
+
+        setTimeout(async () => {
+            await makeRequest(1);
+            await makeRequest(2);
+            await makeRequest(3);
+            document.getElementById('status').innerText = 'All requests finished!';
+            document.getElementById('content').innerText = 'Data loaded via fetch.';
+        }, 1000);
+    </script>
+</body>
+</html>
