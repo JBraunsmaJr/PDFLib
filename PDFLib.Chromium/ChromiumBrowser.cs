@@ -1,9 +1,9 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
-using PDFLib.Console.RPC;
+using PDFLib.Chromium.RPC;
 
-namespace PDFLib.Console;
+namespace PDFLib.Chromium;
 
 public class ChromiumBrowser : IDisposable
 {
@@ -68,8 +68,24 @@ public class ChromiumBrowser : IDisposable
 
         _dispatcher = new CdpDispatcher(writer, reader);
         
-        // Brief delay to allow Chromium to boot
-        await Task.Delay(500);
+        // Wait for Chromium to be ready by sending a simple command instead of a fixed delay
+        var ready = false;
+        var start = Stopwatch.GetTimestamp();
+        
+        while (!ready && (Stopwatch.GetTimestamp() - start) < (long)Stopwatch.Frequency * 5)
+        {
+            try
+            {
+                await _dispatcher.SendCommandAsync("Browser.getVersion");
+                ready = true;
+            }
+            catch
+            {
+                await Task.Delay(50);
+            }
+        }
+
+        if (!ready) throw new Exception("Chromium failed to become ready within timeout");
     }
 
     public async Task<CdpPage> CreatePageAsync()

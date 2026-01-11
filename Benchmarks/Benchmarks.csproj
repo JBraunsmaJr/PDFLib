@@ -15,7 +15,7 @@
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\PDFLib.Console\PDFLib.Console.csproj" />
+      <ProjectReference Include="..\PDFLib.Chromium\PDFLib.Chromium.csproj" />
     </ItemGroup>
 
     <ItemGroup>

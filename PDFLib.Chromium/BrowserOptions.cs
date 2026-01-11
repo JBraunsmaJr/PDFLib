@@ -1,4 +1,4 @@
-namespace PDFLib.Console;
+namespace PDFLib.Chromium;
 
 public class BrowserOptions
 {
