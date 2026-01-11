@@ -19,7 +19,27 @@ public class CdpDispatcher
     private readonly SemaphoreSlim _writeSemaphore = new(1, 1);
     private readonly ArrayBufferWriter<byte> _writeBuffer = new(4096);
     private int _nextId;
+    
+    #region PreAllocated
+    /*
+     * Preallocated variables of commonly used things
+     * to help reduce allocations
+     */
+    
+    private static readonly byte[] IdBytes = "id"u8.ToArray();
+    private static readonly byte[] MethodBytes = "method"u8.ToArray();
+    private static readonly byte[] ResultBytes = "result"u8.ToArray();
+    private static readonly byte[] ErrorBytes = "error"u8.ToArray();
+    private static readonly byte[] ParamsBytes = "params"u8.ToArray();
+    private static readonly byte[] SessionIdBytes = "sessionId"u8.ToArray();
+    private static readonly byte[] EmptyParamsBytes = "{}"u8.ToArray();
 
+    private static readonly JsonEncodedText IdEncoded = JsonEncodedText.Encode("id"u8);
+    private static readonly JsonEncodedText MethodEncoded = JsonEncodedText.Encode("method"u8);
+    private static readonly JsonEncodedText ParamsEncoded = JsonEncodedText.Encode("params"u8);
+    private static readonly JsonEncodedText SessionIdEncoded = JsonEncodedText.Encode("sessionId"u8);
+    #endregion
+    
     public interface IResponseHandler
     {
         void Handle(ReadOnlySequence<byte> message);
@@ -39,14 +59,7 @@ public class CdpDispatcher
                 var root = doc.RootElement;
                 if (root.TryGetProperty("result", out var result))
                 {
-                    if (result.ValueKind == JsonValueKind.Undefined)
-                    {
-                        _tcs.SetResult(default);
-                    }
-                    else
-                    {
-                        _tcs.SetResult(result.Clone());
-                    }
+                    _tcs.SetResult(result.ValueKind == JsonValueKind.Undefined ? default : result.Clone());
                 }
                 else if (root.TryGetProperty("error", out var error))
                 {
@@ -238,19 +251,7 @@ public class CdpDispatcher
         if (s is { Length: < 128 }) _stringCache.TryAdd(s, s);
         return s;
     }
-
-    private static readonly byte[] IdBytes = "id"u8.ToArray();
-    private static readonly byte[] MethodBytes = "method"u8.ToArray();
-    private static readonly byte[] ResultBytes = "result"u8.ToArray();
-    private static readonly byte[] ErrorBytes = "error"u8.ToArray();
-    private static readonly byte[] ParamsBytes = "params"u8.ToArray();
-    private static readonly byte[] SessionIdBytes = "sessionId"u8.ToArray();
-    private static readonly byte[] EmptyParamsBytes = "{}"u8.ToArray();
-
-    private static readonly JsonEncodedText IdEncoded = JsonEncodedText.Encode("id"u8);
-    private static readonly JsonEncodedText MethodEncoded = JsonEncodedText.Encode("method"u8);
-    private static readonly JsonEncodedText ParamsEncoded = JsonEncodedText.Encode("params"u8);
-    private static readonly JsonEncodedText SessionIdEncoded = JsonEncodedText.Encode("sessionId"u8);
+    
 
     private void ProcessMessage(ReadOnlySequence<byte> message)
     {
@@ -299,37 +300,35 @@ public class CdpDispatcher
                 var foundParams = false;
                 while (paramsReader.Read())
                 {
-                    if (paramsReader.TokenType == JsonTokenType.PropertyName)
+                    if (paramsReader.TokenType != JsonTokenType.PropertyName) continue;
+                    bool isParams;
+                    if (!paramsReader.HasValueSequence)
                     {
-                        bool isParams;
-                        if (!paramsReader.HasValueSequence)
-                        {
-                            isParams = paramsReader.ValueSpan.SequenceEqual(ParamsBytes);
-                        }
-                        else
-                        {
-                            var pRented = ArrayPool<byte>.Shared.Rent((int)paramsReader.ValueSequence.Length);
-                            paramsReader.ValueSequence.CopyTo(pRented);
-                            isParams = pRented.AsSpan(0, (int)paramsReader.ValueSequence.Length).SequenceEqual(ParamsBytes);
-                            ArrayPool<byte>.Shared.Return(pRented);
-                        }
-                        paramsReader.Read();
-
-                        if (isParams)
-                        {
-                            var p = JsonElement.ParseValue(ref paramsReader);
-                            lock (handlers)
-                            {
-                                foreach (var h in handlers)
-                                {
-                                    h(p);
-                                }
-                            }
-                            foundParams = true;
-                            break;
-                        }
-                        paramsReader.Skip();
+                        isParams = paramsReader.ValueSpan.SequenceEqual(ParamsBytes);
                     }
+                    else
+                    {
+                        var pRented = ArrayPool<byte>.Shared.Rent((int)paramsReader.ValueSequence.Length);
+                        paramsReader.ValueSequence.CopyTo(pRented);
+                        isParams = pRented.AsSpan(0, (int)paramsReader.ValueSequence.Length).SequenceEqual(ParamsBytes);
+                        ArrayPool<byte>.Shared.Return(pRented);
+                    }
+                    paramsReader.Read();
+
+                    if (isParams)
+                    {
+                        var p = JsonElement.ParseValue(ref paramsReader);
+                        lock (handlers)
+                        {
+                            foreach (var h in handlers)
+                            {
+                                h(p);
+                            }
+                        }
+                        foundParams = true;
+                        break;
+                    }
+                    paramsReader.Skip();
                 }
 
                 if (!foundParams)

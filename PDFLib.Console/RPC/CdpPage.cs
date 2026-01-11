@@ -15,6 +15,16 @@ public class CdpPage : IAsyncDisposable
     private readonly string _targetId;
     private readonly SemaphoreSlim _semaphore;
     private readonly BrowserOptions _options;
+    
+    #region Preallocated
+    private static readonly byte[] ResultBytes = "result"u8.ToArray();
+    private static readonly byte[] ValueBytes = "value"u8.ToArray();
+    private static readonly byte[] ErrorBytes = "error"u8.ToArray();
+    private static readonly byte[] EofBytes = "eof"u8.ToArray();
+    private static readonly byte[] Base64EncodedBytes = "base64Encoded"u8.ToArray();
+    private static readonly byte[] DataBytes = "data"u8.ToArray();
+    private static readonly byte[] CompleteBytes = "complete"u8.ToArray();
+    #endregion
 
     private class IoReadResponseHandler : CdpDispatcher.IResponseHandler
     {
@@ -312,7 +322,7 @@ public class CdpPage : IAsyncDisposable
                     var readyStateRes = await _dispatcher.SendCommandAsync("Runtime.evaluate", new { expression = "document.readyState" }, _sessionId);
                     if (readyStateRes.TryGetProperty(ResultBytes, out var result) && result.TryGetProperty(ValueBytes, out var value))
                     {
-                        if (value.ValueEquals("complete"u8)) return;
+                        if (value.ValueEquals(CompleteBytes)) return;
                     }
                 }
 
@@ -363,13 +373,6 @@ public class CdpPage : IAsyncDisposable
             }
         }
     }
-
-    private static readonly byte[] ResultBytes = "result"u8.ToArray();
-    private static readonly byte[] ValueBytes = "value"u8.ToArray();
-    private static readonly byte[] ErrorBytes = "error"u8.ToArray();
-    private static readonly byte[] EofBytes = "eof"u8.ToArray();
-    private static readonly byte[] Base64EncodedBytes = "base64Encoded"u8.ToArray();
-    private static readonly byte[] DataBytes = "data"u8.ToArray();
 
     public async Task PrintToPdfAsync(string html, Stream destinationStream, CancellationToken cancellationToken = default)
     {

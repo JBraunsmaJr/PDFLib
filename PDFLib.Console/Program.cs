@@ -1,8 +1,8 @@
 ﻿using System.Diagnostics;
 using PDFLib.Console;
 
-const string output = "test-out";
-if (!Directory.Exists(output)) Directory.CreateDirectory(output);
+const string OUTPUT_DIRECTORY = "/out";
+if (!Directory.Exists(OUTPUT_DIRECTORY)) Directory.CreateDirectory(OUTPUT_DIRECTORY);
 
 await RunStandardSamples();
 await RunWaitStrategySamples();
@@ -20,7 +20,7 @@ async Task RunStandardSamples()
         var html = await File.ReadAllTextAsync(file);
         Console.WriteLine($"Processing {Path.GetFileName(file)}: {html.Length} characters");
 
-        await RenderToPdf(browser, file, html, new BrowserOptions());
+        await RenderToPdf(browser, file, html);
     }
 }
 
@@ -43,7 +43,7 @@ async Task RunWaitStrategySamples()
         var file = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "samples", "js-variable-wait.html");
         var html = await File.ReadAllTextAsync(file);
         Console.WriteLine("Processing js-variable-wait.html (Strategy: JavascriptVariable)");
-        await RenderToPdf(browser, file, html, options);
+        await RenderToPdf(browser, file, html);
     }
 
     // Test Network Idle Wait
@@ -59,14 +59,14 @@ async Task RunWaitStrategySamples()
         var file = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "samples", "network-wait.html");
         var html = await File.ReadAllTextAsync(file);
         Console.WriteLine("Processing network-wait.html (Strategy: NetworkIdle)");
-        await RenderToPdf(browser, file, html, options);
+        await RenderToPdf(browser, file, html);
     }
 }
 
-async Task RenderToPdf(ChromiumBrowser browser, string file, string html, BrowserOptions options)
+async Task RenderToPdf(ChromiumBrowser browser, string file, string html)
 {
     var info = new FileInfo(file);
-    var fullPath = Path.Combine(output, info.Name.Replace(".html", ".pdf"));
+    var fullPath = Path.Combine(OUTPUT_DIRECTORY, info.Name.Replace(".html", ".pdf"));
     if (File.Exists(fullPath))
         File.Delete(fullPath);
         
