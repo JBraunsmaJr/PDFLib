@@ -79,13 +79,13 @@ Old:
 
 New:
 
-| Method | FileName             | Mean        | Error     | StdDev     | Median      | Gen0      | Allocated   |
-|------- |--------------------- |------------:|----------:|-----------:|------------:|----------:|------------:|
-| Dink   | large-sample.html    | 1,030.67 ms |  7.634 ms |   6.375 ms | 1,028.72 ms |         - |   556.66 KB |
-| PdfLib | large-sample.html    |   829.91 ms |  6.681 ms |   6.250 ms |   828.23 ms |         - |  8490.34 KB |
-| Dink   | sample.html          |   250.64 ms |  4.932 ms |   8.240 ms |   251.87 ms |         - |   119.41 KB |
-| PdfLib | sample.html          |    80.39 ms | 12.496 ms |  36.845 ms |    60.40 ms |         - |    86.33 KB |
-| Dink   | x2-large-sample.html | 1,812.86 ms | 12.315 ms |  10.917 ms | 1,810.01 ms |         - |  1006.61 KB |
-| PdfLib | x2-large-sample.html | 1,904.25 ms | 48.289 ms | 141.625 ms | 1,867.41 ms | 1000.0000 |  21574.8 KB |
-| Dink   | x3-large-sample.html | 2,732.06 ms | 53.705 ms |  92.639 ms | 2,701.66 ms |         - |  1457.91 KB |
-| PdfLib | x3-large-sample.html | 2,855.67 ms | 52.383 ms |  98.389 ms | 2,810.33 ms | 1000.0000 | 18444.57 KB |
+| Method | FileName             | Mean        | Error     | StdDev    | Median      | Gen0      | Gen1      | Allocated   |
+|------- |--------------------- |------------:|----------:|----------:|------------:|----------:|----------:|------------:|
+| Dink   | large-sample.html    | 1,020.53 ms | 11.356 ms |  9.483 ms | 1,014.76 ms |         - |         - |   556.66 KB |                                                                                                                                                                                                                                                                                                       
+| PdfLib | large-sample.html    |   861.73 ms |  9.515 ms |  8.901 ms |   862.11 ms |         - |         - | 14237.73 KB |
+| Dink   | sample.html          |   248.56 ms |  4.944 ms | 10.748 ms |   251.36 ms |         - |         - |   119.41 KB |
+| PdfLib | sample.html          |    52.40 ms |  2.724 ms |  7.727 ms |    49.48 ms |         - |         - |   243.97 KB |
+| Dink   | x2-large-sample.html | 1,816.17 ms | 10.931 ms |  9.128 ms | 1,816.81 ms |         - |         - |  1006.61 KB |
+| PdfLib | x2-large-sample.html | 1,832.77 ms | 36.294 ms | 97.500 ms | 1,797.17 ms | 1000.0000 |         - | 29530.83 KB |
+| Dink   | x3-large-sample.html | 2,612.91 ms | 13.045 ms | 11.564 ms | 2,609.93 ms |         - |         - |  1457.91 KB |
+| PdfLib | x3-large-sample.html | 2,823.60 ms | 16.721 ms | 15.640 ms | 2,819.74 ms | 2000.0000 | 1000.0000 | 36952.71 KB |

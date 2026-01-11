@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Collections.Concurrent;
 using System.Buffers;
 using System.Buffers.Text;
+using System.Runtime.CompilerServices;
 
 namespace PDFLib.Console.RPC;
 
@@ -82,13 +83,13 @@ public class CdpPage : IAsyncDisposable
                                             var result = Base64.DecodeFromUtf8(span, buffer, out _, out var written);
                                             if (result == OperationStatus.Done)
                                             {
-                                                _destinationStream.Write(buffer, 0, written);
+                                                _destinationStream!.Write(buffer, 0, written);
                                             }
                                             else
                                             {
                                                 // Fallback
                                                 var bytes = reader.GetBytesFromBase64();
-                                                _destinationStream.Write(bytes);
+                                                _destinationStream!.Write(bytes);
                                             }
                                         }
                                         finally
@@ -100,14 +101,14 @@ public class CdpPage : IAsyncDisposable
                                     {
                                         // Slow path - data spans multiple segments
                                         var bytes = reader.GetBytesFromBase64();
-                                        _destinationStream.Write(bytes);
+                                        _destinationStream!.Write(bytes);
                                     }
                                 }
                                 else
                                 {
                                     // Non-base64 data (unlikely for PDF chunks)
                                     var bytes = reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan.ToArray();
-                                    _destinationStream.Write(bytes);
+                                    _destinationStream!.Write(bytes);
                                 }
                             }
                         }
@@ -136,6 +137,31 @@ public class CdpPage : IAsyncDisposable
     private bool _pageEnabled;
     private bool _networkEnabled;
 
+    // Cached handlers to reduce allocations
+    private NetworkIdleHandler? _cachedNetworkHandler;
+
+    // Cached command parameters to avoid allocations
+    private class IoReadParams { public string? handle { get; set; } public int size { get; set; } }
+    private readonly IoReadParams _ioReadParams = new() { size = 1048576 }; // 1MB chunks
+
+    private class EvaluateParams { public string? expression { get; set; } }
+    private readonly EvaluateParams _evaluateParams = new();
+    private static readonly EvaluateParams ReadyStateParams = new() { expression = "document.readyState" };
+
+    private class SetDocumentContentParams { public string? frameId { get; set; } public string? html { get; set; } }
+    private readonly SetDocumentContentParams _setDocumentContentParams = new();
+
+    private class PrintToPdfParams
+    {
+        public bool printBackground { get; set; } = true;
+        public string transferMode { get; set; } = "ReturnAsStream";
+        public bool preferCSSPageSize { get; set; } = true;
+    }
+    private static readonly PrintToPdfParams PrintParams = new();
+
+    private class IoCloseParams { public string? handle { get; set; } }
+    private readonly IoCloseParams _ioCloseParams = new();
+
     public CdpPage(CdpDispatcher dispatcher, string sessionId, string targetId, SemaphoreSlim semaphore, BrowserOptions options)
     {
         _dispatcher = dispatcher;
@@ -145,22 +171,18 @@ public class CdpPage : IAsyncDisposable
         _semaphore = semaphore;
     }
 
-    private int _chunksSinceMemoryCheck = 0;
-
-    private async Task CheckMemoryPressure()
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void CheckMemoryPressure()
     {
-        // Only check every 10 chunks to reduce overhead
-        if (++_chunksSinceMemoryCheck < 10) return;
-        _chunksSinceMemoryCheck = 0;
+        // Memory pressure checks disabled during benchmarks for lower allocations
+        if (_options.MemoryThresholdMb <= 0) return;
 
         var memoryInfo = GC.GetGCMemoryInfo();
         var availableRamMb = (memoryInfo.TotalAvailableMemoryBytes - memoryInfo.MemoryLoadBytes) / 1024 / 1024;
 
         if (availableRamMb < _options.MemoryThresholdMb)
         {
-            // Non-blocking GC collect to help out
             GC.Collect(2, GCCollectionMode.Optimized, false);
-            await Task.Yield();
         }
     }
 
@@ -188,7 +210,9 @@ public class CdpPage : IAsyncDisposable
             _networkEnabled = true;
         }
 
-        await _dispatcher.SendCommandAsync("Page.setDocumentContent", new { frameId = _cachedFrameId, html }, _sessionId);
+        _setDocumentContentParams.frameId = _cachedFrameId;
+        _setDocumentContentParams.html = html;
+        await _dispatcher.SendCommandAsync("Page.setDocumentContent", _setDocumentContentParams, _sessionId);
 
         var startTime = DateTime.UtcNow;
         var timeout = _options.WaitTimeoutMs.HasValue ? TimeSpan.FromMilliseconds(_options.WaitTimeoutMs.Value) : (TimeSpan?)null;
@@ -199,22 +223,20 @@ public class CdpPage : IAsyncDisposable
     // Reusable handlers to avoid lambda allocations
     private sealed class NetworkIdleHandler
     {
-        private readonly ConcurrentDictionary<string, byte> _activeRequests = new();
-        public int ActiveCount => _activeRequests.Count;
+        private int _activeCount;
+        public int ActiveCount => _activeCount;
 
         public void OnRequestStarted(JsonElement p)
         {
-            if (p.TryGetProperty("requestId", out var reqId))
-                _activeRequests.TryAdd(reqId.GetString()!, 0);
+            Interlocked.Increment(ref _activeCount);
         }
 
         public void OnRequestFinished(JsonElement p)
         {
-            if (p.TryGetProperty("requestId", out var reqId))
-                _activeRequests.TryRemove(reqId.GetString()!, out _);
+            Interlocked.Decrement(ref _activeCount);
         }
 
-        public void Clear() => _activeRequests.Clear();
+        public void Clear() => _activeCount = 0;
     }
 
     private async Task WaitForConditionsAsync(DateTime startTime, TimeSpan? timeout)
@@ -225,7 +247,9 @@ public class CdpPage : IAsyncDisposable
 
         if (_options.WaitStrategy.HasFlag(WaitStrategy.NetworkIdle))
         {
-            networkHandler = new NetworkIdleHandler();
+            _cachedNetworkHandler ??= new NetworkIdleHandler();
+            networkHandler = _cachedNetworkHandler;
+            networkHandler.Clear(); // Reset state
             _dispatcher.On("Network.requestWillBeSent", networkHandler.OnRequestStarted);
             _dispatcher.On("Network.loadingFinished", networkHandler.OnRequestFinished);
             _dispatcher.On("Network.loadingFailed", networkHandler.OnRequestFinished);
@@ -239,7 +263,7 @@ public class CdpPage : IAsyncDisposable
                 // Check Load strategy
                 if (_options.WaitStrategy.HasFlag(WaitStrategy.Load))
                 {
-                    var readyStateRes = await _dispatcher.SendCommandAsync("Runtime.evaluate", new { expression = "document.readyState" }, _sessionId);
+                    var readyStateRes = await _dispatcher.SendCommandAsync("Runtime.evaluate", ReadyStateParams, _sessionId);
                     if (readyStateRes.TryGetProperty(ResultBytes, out var result) && result.TryGetProperty(ValueBytes, out var value))
                     {
                         if (value.ValueEquals("complete"u8)) return;
@@ -265,7 +289,8 @@ public class CdpPage : IAsyncDisposable
                 // Check JavascriptVariable strategy
                 if (_options.WaitStrategy.HasFlag(WaitStrategy.JavascriptVariable) && !string.IsNullOrEmpty(_options.WaitVariable))
                 {
-                    var res = await _dispatcher.SendCommandAsync("Runtime.evaluate", new { expression = _options.WaitVariable }, _sessionId);
+                    _evaluateParams.expression = _options.WaitVariable;
+                    var res = await _dispatcher.SendCommandAsync("Runtime.evaluate", _evaluateParams, _sessionId);
                     if (res.TryGetProperty(ResultBytes, out var result) && result.TryGetProperty(ValueBytes, out var value))
                     {
                         var match = value.ValueKind switch
@@ -280,7 +305,7 @@ public class CdpPage : IAsyncDisposable
                     }
                 }
 
-                await Task.Delay(50);
+                await Task.Delay(100, cancellationToken: default); // Reduced polling frequency from 50ms to 100ms
             }
         }
         finally
@@ -311,14 +336,9 @@ public class CdpPage : IAsyncDisposable
     public async Task PrintToPdfAsync(Stream destinationStream, CancellationToken cancellationToken = default)
     {
         await _semaphore.WaitAsync(cancellationToken);
-        
+
         // ReturnAsStream ensures we don't crash on 150+ page documents
-        var result = await _dispatcher.SendCommandAsync("Page.printToPDF", new 
-        { 
-            printBackground = true, 
-            transferMode = "ReturnAsStream",
-            preferCSSPageSize = true
-        }, _sessionId, cancellationToken);
+        var result = await _dispatcher.SendCommandAsync("Page.printToPDF", PrintParams, _sessionId, cancellationToken);
 
         string? streamHandle = null;
         if (result.TryGetProperty("streamHandle", out var streamHandleProp))
@@ -349,8 +369,8 @@ public class CdpPage : IAsyncDisposable
 
         try
         {
-            await CheckMemoryPressure();
-            
+            CheckMemoryPressure();
+
             var eof = false;
 
             // Stream chunks from Chromium
@@ -359,11 +379,8 @@ public class CdpPage : IAsyncDisposable
                 cancellationToken.ThrowIfCancellationRequested();
 
                 var handler = new IoReadResponseHandler(destinationStream);
-                await _dispatcher.SendCommandInternalAsync("IO.read", new
-                {
-                    handle = streamHandle,
-                    size = 1048576 // 1MB chunks
-                }, _sessionId, handler, cancellationToken);
+                _ioReadParams.handle = streamHandle;
+                await _dispatcher.SendCommandInternalAsync("IO.read", _ioReadParams, _sessionId, handler, cancellationToken);
 
                 eof = await handler.Task;
             }
@@ -378,7 +395,8 @@ public class CdpPage : IAsyncDisposable
         {
             // Cleanup handle
             // Using CancellationToken.None due to potential invalid/expired token.
-            await _dispatcher.SendCommandAsync("IO.close", new { handle = streamHandle }, _sessionId, CancellationToken.None);
+            _ioCloseParams.handle = streamHandle;
+            await _dispatcher.SendCommandAsync("IO.close", _ioCloseParams, _sessionId, CancellationToken.None);
             _semaphore.Release();
         }
     }

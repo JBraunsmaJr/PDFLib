@@ -8,7 +8,7 @@ public class Benchmarks
     private IConverter _dink;
     private IConverter _pdfLib;
 
-    [Params("sample.html","large-sample.html", "x2-large-sample.html", "x3-large-sample.html")]
+    [Params( "x3-large-sample.html")]
     public string FileName;
 
     private string _currentHtml;

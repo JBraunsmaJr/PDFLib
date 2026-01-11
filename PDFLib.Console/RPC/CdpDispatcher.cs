@@ -15,7 +15,7 @@ public class CdpDispatcher
     private readonly ConcurrentDictionary<int, IResponseHandler> _pendingRequests = new();
     private readonly ConcurrentDictionary<string, List<Action<JsonElement>>> _eventHandlers = new();
     private readonly SemaphoreSlim _writeSemaphore = new(1, 1);
-    private readonly ArrayBufferWriter<byte> _writeBuffer = new(8192);
+    private readonly ArrayBufferWriter<byte> _writeBuffer = new(4096); // Reduced from 8192
     private int _nextId;
 
     public interface IResponseHandler
@@ -64,7 +64,7 @@ public class CdpDispatcher
     /// <param name="handler">Handler for the specified CDP method</param>
     public void On(string method, Action<JsonElement> handler)
     {
-        _eventHandlers.AddOrUpdate(method, _ => [handler], (_, list) =>
+        _eventHandlers.AddOrUpdate(method, _ => new List<Action<JsonElement>>(1) { handler }, (_, list) =>
         {
             lock (list)
             {
@@ -98,9 +98,9 @@ public class CdpDispatcher
     /// <param name="cancellationToken"></param>
     /// <returns>JsonElement that CDP returns</returns>
     public async Task<JsonElement> SendCommandAsync(
-        string method, 
-        object? @params = null, 
-        string? sessionId = null, 
+        string method,
+        object? @params = null,
+        string? sessionId = null,
         CancellationToken cancellationToken = default)
     {
         var handler = new JsonResponseHandler();
@@ -109,9 +109,9 @@ public class CdpDispatcher
     }
 
     public async Task SendCommandInternalAsync(
-        string method, 
-        object? @params, 
-        string? sessionId, 
+        string method,
+        object? @params,
+        string? sessionId,
         IResponseHandler handler,
         CancellationToken cancellationToken = default)
     {
@@ -122,7 +122,7 @@ public class CdpDispatcher
         try
         {
             _writeBuffer.Clear();
-            await using (var writer = new Utf8JsonWriter(_writeBuffer))
+            using (var writer = new Utf8JsonWriter(_writeBuffer))
             {
                 writer.WriteStartObject();
                 writer.WriteNumber(IdEncoded, id);
