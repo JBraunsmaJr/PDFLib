@@ -65,7 +65,7 @@ public class ChromiumBrowser : IDisposable
 
         var writer = new FileStream(new SafeFileHandle(pipeOut[1], true), FileAccess.Write);
         var reader = new FileStream(new SafeFileHandle(pipeIn[0], true), FileAccess.Read);
-        
+
         _dispatcher = new CdpDispatcher(writer, reader);
         
         // Brief delay to allow Chromium to boot

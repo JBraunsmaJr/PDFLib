@@ -15,7 +15,7 @@ public class CdpDispatcher
     private readonly ConcurrentDictionary<int, IResponseHandler> _pendingRequests = new();
     private readonly ConcurrentDictionary<string, List<Action<JsonElement>>> _eventHandlers = new();
     private readonly SemaphoreSlim _writeSemaphore = new(1, 1);
-    private readonly ArrayBufferWriter<byte> _writeBuffer = new(4096);
+    private readonly ArrayBufferWriter<byte> _writeBuffer = new(8192);
     private int _nextId;
 
     public interface IResponseHandler
@@ -129,7 +129,7 @@ public class CdpDispatcher
                 writer.WriteString(MethodEncoded, method);
 
                 writer.WritePropertyName(ParamsEncoded);
-                
+
                 if (@params != null)
                 {
                     JsonSerializer.Serialize(writer, @params);
@@ -231,7 +231,21 @@ public class CdpDispatcher
         {
             if (reader.TokenType == JsonTokenType.PropertyName)
             {
-                var span = reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan;
+                ReadOnlySpan<byte> span;
+                byte[]? rentedArray = null;
+
+                if (reader.HasValueSequence)
+                {
+                    var length = (int)reader.ValueSequence.Length;
+                    rentedArray = ArrayPool<byte>.Shared.Rent(length);
+                    reader.ValueSequence.CopyTo(rentedArray);
+                    span = rentedArray.AsSpan(0, length);
+                }
+                else
+                {
+                    span = reader.ValueSpan;
+                }
+
                 reader.Read();
                 
                 if (span.SequenceEqual(IdBytes))
@@ -276,6 +290,11 @@ public class CdpDispatcher
                 {
                     reader.Skip();
                 }
+
+                if (rentedArray != null)
+                {
+                    ArrayPool<byte>.Shared.Return(rentedArray);
+                }
             }
             if (id.HasValue && (method != null || hasResult || hasError)) break;
         }
@@ -285,25 +304,31 @@ public class CdpDispatcher
             if (_eventHandlers.TryGetValue(method, out var handlers))
             {
                 // Only parse params if we actually have handlers
-                using var doc = JsonDocument.Parse(message);
-                if (doc.RootElement.TryGetProperty("params", out var p))
+                // Use TryGetProperty check without parsing if no handlers need it
+                var handlerCount = 0;
+                lock (handlers) { handlerCount = handlers.Count; }
+
+                if (handlerCount > 0)
                 {
-                    // Avoid ToArray() if possible
-                    lock (handlers)
+                    using var doc = JsonDocument.Parse(message);
+                    if (doc.RootElement.TryGetProperty("params", out var p))
                     {
-                        foreach (var h in handlers)
+                        lock (handlers)
                         {
-                            h(p);
+                            foreach (var h in handlers)
+                            {
+                                h(p);
+                            }
                         }
                     }
-                }
-                else
-                {
-                    lock (handlers)
+                    else
                     {
-                        foreach (var h in handlers)
+                        lock (handlers)
                         {
-                            h(default);
+                            foreach (var h in handlers)
+                            {
+                                h(default);
+                            }
                         }
                     }
                 }

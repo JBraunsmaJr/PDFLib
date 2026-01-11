@@ -71,38 +71,14 @@ public class CdpPage : IAsyncDisposable
                                 if (base64Encoded)
                                 {
                                     // Decode directly from the reader's buffer to avoid string allocation
-                                    var base64Length = reader.HasValueSequence ? (int)reader.ValueSequence.Length : reader.ValueSpan.Length;
-                                    var maxByteCount = (base64Length * 3 + 3) / 4;
-                                    var buffer = ArrayPool<byte>.Shared.Rent(maxByteCount);
-                                    try
+                                    if (!reader.HasValueSequence)
                                     {
-                                        if (reader.HasValueSequence)
+                                        // Fast path - data is contiguous
+                                        var span = reader.ValueSpan;
+                                        var maxByteCount = ((span.Length + 3) / 4) * 3;
+                                        var buffer = ArrayPool<byte>.Shared.Rent(maxByteCount);
+                                        try
                                         {
-                                            var seq = reader.ValueSequence;
-                                            // Copy to pooled buffer for decoding
-                                            var tempBase64 = ArrayPool<byte>.Shared.Rent((int)seq.Length);
-                                            try {
-                                                seq.CopyTo(tempBase64);
-                                                var result = Base64.DecodeFromUtf8(tempBase64.AsSpan(0, (int)seq.Length), buffer, out _, out var written);
-                                                if (result == OperationStatus.Done)
-                                                {
-                                                    _destinationStream.Write(buffer, 0, written);
-                                                }
-                                                else
-                                                {
-                                                    // Fallback if buffer too small (shouldn't happen with our maxByteCount)
-                                                    var bytes = reader.GetBytesFromBase64();
-                                                    _destinationStream.Write(bytes);
-                                                }
-                                            } finally {
-                                                ArrayPool<byte>.Shared.Return(tempBase64);
-                                            }
-                                        }
-                                        else
-                                        {
-                                            // reader.ValueSpan is UTF8 bytes of the base64 string
-                                            // We can use Base64.DecodeFromUtf8
-                                            var span = reader.ValueSpan;
                                             var result = Base64.DecodeFromUtf8(span, buffer, out _, out var written);
                                             if (result == OperationStatus.Done)
                                             {
@@ -115,10 +91,16 @@ public class CdpPage : IAsyncDisposable
                                                 _destinationStream.Write(bytes);
                                             }
                                         }
+                                        finally
+                                        {
+                                            ArrayPool<byte>.Shared.Return(buffer);
+                                        }
                                     }
-                                    finally
+                                    else
                                     {
-                                        ArrayPool<byte>.Shared.Return(buffer);
+                                        // Slow path - data spans multiple segments
+                                        var bytes = reader.GetBytesFromBase64();
+                                        _destinationStream.Write(bytes);
                                     }
                                 }
                                 else
@@ -163,8 +145,14 @@ public class CdpPage : IAsyncDisposable
         _semaphore = semaphore;
     }
 
+    private int _chunksSinceMemoryCheck = 0;
+
     private async Task CheckMemoryPressure()
     {
+        // Only check every 10 chunks to reduce overhead
+        if (++_chunksSinceMemoryCheck < 10) return;
+        _chunksSinceMemoryCheck = 0;
+
         var memoryInfo = GC.GetGCMemoryInfo();
         var availableRamMb = (memoryInfo.TotalAvailableMemoryBytes - memoryInfo.MemoryLoadBytes) / 1024 / 1024;
 
@@ -208,21 +196,39 @@ public class CdpPage : IAsyncDisposable
         await WaitForConditionsAsync(startTime, timeout);
     }
 
+    // Reusable handlers to avoid lambda allocations
+    private sealed class NetworkIdleHandler
+    {
+        private readonly ConcurrentDictionary<string, byte> _activeRequests = new();
+        public int ActiveCount => _activeRequests.Count;
+
+        public void OnRequestStarted(JsonElement p)
+        {
+            if (p.TryGetProperty("requestId", out var reqId))
+                _activeRequests.TryAdd(reqId.GetString()!, 0);
+        }
+
+        public void OnRequestFinished(JsonElement p)
+        {
+            if (p.TryGetProperty("requestId", out var reqId))
+                _activeRequests.TryRemove(reqId.GetString()!, out _);
+        }
+
+        public void Clear() => _activeRequests.Clear();
+    }
+
     private async Task WaitForConditionsAsync(DateTime startTime, TimeSpan? timeout)
     {
         if (_options.WaitStrategy == 0) return;
 
-        var activeRequests = new ConcurrentDictionary<string, byte>();
-        Action<JsonElement>? requestStarted = null;
-        Action<JsonElement>? requestFinished = null;
+        NetworkIdleHandler? networkHandler = null;
 
         if (_options.WaitStrategy.HasFlag(WaitStrategy.NetworkIdle))
         {
-            requestStarted = (p) => activeRequests.TryAdd(p.GetProperty("requestId").GetString()!, 0);
-            requestFinished = (p) => activeRequests.TryRemove(p.GetProperty("requestId").GetString()!, out _);
-            _dispatcher.On("Network.requestWillBeSent", requestStarted);
-            _dispatcher.On("Network.loadingFinished", requestFinished);
-            _dispatcher.On("Network.loadingFailed", requestFinished);
+            networkHandler = new NetworkIdleHandler();
+            _dispatcher.On("Network.requestWillBeSent", networkHandler.OnRequestStarted);
+            _dispatcher.On("Network.loadingFinished", networkHandler.OnRequestFinished);
+            _dispatcher.On("Network.loadingFailed", networkHandler.OnRequestFinished);
         }
 
         try
@@ -241,9 +247,9 @@ public class CdpPage : IAsyncDisposable
                 }
 
                 // Check NetworkIdle strategy
-                if (_options.WaitStrategy.HasFlag(WaitStrategy.NetworkIdle))
+                if (_options.WaitStrategy.HasFlag(WaitStrategy.NetworkIdle) && networkHandler != null)
                 {
-                    if (activeRequests.Count <= 2)
+                    if (networkHandler.ActiveCount <= 2)
                     {
                         if (DateTime.UtcNow - lastActiveTime > TimeSpan.FromMilliseconds(500))
                         {
@@ -279,11 +285,12 @@ public class CdpPage : IAsyncDisposable
         }
         finally
         {
-            if (requestStarted != null && requestFinished != null)
+            if (networkHandler != null)
             {
-                _dispatcher.Off("Network.requestWillBeSent", requestStarted);
-                _dispatcher.Off("Network.loadingFinished", requestFinished);
-                _dispatcher.Off("Network.loadingFailed", requestFinished);
+                _dispatcher.Off("Network.requestWillBeSent", networkHandler.OnRequestStarted);
+                _dispatcher.Off("Network.loadingFinished", networkHandler.OnRequestFinished);
+                _dispatcher.Off("Network.loadingFailed", networkHandler.OnRequestFinished);
+                networkHandler.Clear();
             }
         }
     }
@@ -346,7 +353,7 @@ public class CdpPage : IAsyncDisposable
             
             var eof = false;
 
-            // Stream chunks from Chromium (1MB at a time)
+            // Stream chunks from Chromium
             while (!eof)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -355,7 +362,7 @@ public class CdpPage : IAsyncDisposable
                 await _dispatcher.SendCommandInternalAsync("IO.read", new
                 {
                     handle = streamHandle,
-                    size = 1024 * 1024
+                    size = 1048576 // 1MB chunks
                 }, _sessionId, handler, cancellationToken);
 
                 eof = await handler.Task;

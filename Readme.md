@@ -64,14 +64,28 @@ Apparently the following errors are "normal" and do not impact PDF generation
 Would appear as the file increases in size, PdfLib decreases in performance. Requires further investigation, quite possible it's the 
 CDP overhead / allocations.
 
-| Method | FileName             | Mean       | Error     | StdDev    | Median     | Gen0      | Gen1      | Allocated   |
-|------- |--------------------- |-----------:|----------:|----------:|-----------:|----------:|----------:|------------:|
-| Dink   | large-sample.html    | 1,463.7 ms |  88.62 ms | 261.30 ms | 1,477.9 ms |         - |         - |   556.66 KB |                                                                                 
-| PdfLib | large-sample.html    | 1,412.9 ms |  83.36 ms | 245.79 ms | 1,521.8 ms | 1000.0000 |         - |  9023.87 KB |
-| Dink   | sample.html          |   226.9 ms |   4.53 ms |   6.04 ms |   224.9 ms |         - |         - |   119.41 KB |
-| PdfLib | sample.html          |   114.3 ms |   7.00 ms |  20.31 ms |   114.7 ms |         - |         - |    87.59 KB |
-| Dink   | x2-large-sample.html | 2,067.1 ms | 112.95 ms | 318.59 ms | 1,887.9 ms |         - |         - |  1006.61 KB |
-| PdfLib | x2-large-sample.html | 1,732.4 ms |  11.41 ms |  10.67 ms | 1,733.7 ms | 1000.0000 |         - | 19073.21 KB |
-| Dink   | x3-large-sample.html | 2,611.6 ms |   9.80 ms |   9.17 ms | 2,611.5 ms |         - |         - |  1457.91 KB |
-| PdfLib | x3-large-sample.html | 3,104.5 ms |  66.57 ms | 183.36 ms | 3,062.2 ms | 3000.0000 | 2000.0000 | 21212.35 KB |
+Old:
 
+| Method | FileName             | Mean        | Error     | StdDev    | Median      | Gen0      | Allocated   |
+|------- |--------------------- |------------:|----------:|----------:|------------:|----------:|------------:|
+| Dink   | large-sample.html    | 1,018.79 ms | 13.280 ms | 12.422 ms | 1,015.22 ms |         - |   556.66 KB |                                                                                                                                                                                                                                                                                                                   
+| PdfLib | large-sample.html    |   835.67 ms |  5.601 ms |  4.677 ms |   836.23 ms |         - |  8490.33 KB |
+| Dink   | sample.html          |   250.94 ms |  4.925 ms |  8.496 ms |   252.28 ms |         - |   119.41 KB |
+| PdfLib | sample.html          |    52.92 ms |  3.180 ms |  9.020 ms |    49.30 ms |         - |    86.47 KB |
+| Dink   | x2-large-sample.html | 1,839.50 ms |  8.079 ms |  7.162 ms | 1,838.82 ms |         - |  1006.61 KB |
+| PdfLib | x2-large-sample.html | 1,689.92 ms |  8.135 ms |  7.610 ms | 1,689.54 ms | 1000.0000 | 17478.55 KB |
+| Dink   | x3-large-sample.html | 2,593.96 ms | 10.492 ms |  9.814 ms | 2,592.97 ms |         - |  1457.91 KB |
+| PdfLib | x3-large-sample.html | 2,789.28 ms | 15.657 ms | 14.646 ms | 2,784.81 ms | 1000.0000 | 18444.96 KB |
+
+New:
+
+| Method | FileName             | Mean        | Error     | StdDev     | Median      | Gen0      | Allocated   |
+|------- |--------------------- |------------:|----------:|-----------:|------------:|----------:|------------:|
+| Dink   | large-sample.html    | 1,030.67 ms |  7.634 ms |   6.375 ms | 1,028.72 ms |         - |   556.66 KB |
+| PdfLib | large-sample.html    |   829.91 ms |  6.681 ms |   6.250 ms |   828.23 ms |         - |  8490.34 KB |
+| Dink   | sample.html          |   250.64 ms |  4.932 ms |   8.240 ms |   251.87 ms |         - |   119.41 KB |
+| PdfLib | sample.html          |    80.39 ms | 12.496 ms |  36.845 ms |    60.40 ms |         - |    86.33 KB |
+| Dink   | x2-large-sample.html | 1,812.86 ms | 12.315 ms |  10.917 ms | 1,810.01 ms |         - |  1006.61 KB |
+| PdfLib | x2-large-sample.html | 1,904.25 ms | 48.289 ms | 141.625 ms | 1,867.41 ms | 1000.0000 |  21574.8 KB |
+| Dink   | x3-large-sample.html | 2,732.06 ms | 53.705 ms |  92.639 ms | 2,701.66 ms |         - |  1457.91 KB |
+| PdfLib | x3-large-sample.html | 2,855.67 ms | 52.383 ms |  98.389 ms | 2,810.33 ms | 1000.0000 | 18444.57 KB |
