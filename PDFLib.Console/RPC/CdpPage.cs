@@ -119,8 +119,10 @@ public class CdpPage : IAsyncDisposable
                                                         else
                                                         {
                                                             // Fallback if buffer too small (shouldn't happen with our maxByteCount)
-                                                            var bytes = reader.GetBytesFromBase64();
-                                                            _destinationStream.Write(bytes);
+                                                            if (reader.TryGetBytesFromBase64(out var bytes))
+                                                            {
+                                                                _destinationStream.Write(bytes);
+                                                            }
                                                         }
                                                     }
                                                     finally
@@ -141,8 +143,10 @@ public class CdpPage : IAsyncDisposable
                                                     else
                                                     {
                                                         // Fallback
-                                                        var bytes = reader.GetBytesFromBase64();
-                                                        _destinationStream.Write(bytes);
+                                                        if (reader.TryGetBytesFromBase64(out var bytes))
+                                                        {
+                                                            _destinationStream.Write(bytes);
+                                                        }
                                                     }
                                                 }
                                             }
@@ -160,8 +164,10 @@ public class CdpPage : IAsyncDisposable
                                             }
                                             else
                                             {
-                                                var bytes = reader.ValueSequence.ToArray();
-                                                _destinationStream.Write(bytes);
+                                                foreach (var segment in reader.ValueSequence)
+                                                {
+                                                    _destinationStream.Write(segment.Span);
+                                                }
                                             }
                                         }
                                     }
@@ -255,6 +261,17 @@ public class CdpPage : IAsyncDisposable
         await WaitForConditionsAsync(startTime, timeout);
     }
 
+    private bool TryGetRequestId(JsonElement p, out string id)
+    {
+        if (p.TryGetProperty("requestId", out var idProp))
+        {
+            id = idProp.GetString()!;
+            return id != null;
+        }
+        id = null!;
+        return false;
+    }
+
     private async Task WaitForConditionsAsync(DateTime startTime, TimeSpan? timeout)
     {
         if (_options.WaitStrategy == 0) return;
@@ -265,8 +282,20 @@ public class CdpPage : IAsyncDisposable
 
         if (_options.WaitStrategy.HasFlag(WaitStrategy.NetworkIdle))
         {
-            requestStarted = (p) => activeRequests.TryAdd(p.GetProperty("requestId").GetString()!, 0);
-            requestFinished = (p) => activeRequests.TryRemove(p.GetProperty("requestId").GetString()!, out _);
+            requestStarted = (p) =>
+            {
+                if (TryGetRequestId(p, out var id))
+                {
+                    activeRequests.TryAdd(id, 0);
+                }
+            };
+            requestFinished = (p) =>
+            {
+                if (TryGetRequestId(p, out var id))
+                {
+                    activeRequests.TryRemove(id, out _);
+                }
+            };
             _dispatcher.On("Network.requestWillBeSent", requestStarted);
             _dispatcher.On("Network.loadingFinished", requestFinished);
             _dispatcher.On("Network.loadingFailed", requestFinished);
@@ -374,14 +403,18 @@ public class CdpPage : IAsyncDisposable
         {
             // If ReturnAsStream failed or was ignored, the PDF might be in 'data'
             if (!result.TryGetProperty("data", out var dataProp))
-                throw new Exception(
-                    $"CDP Error: Page.printToPDF did not return stream handle or data. Response: {result.GetRawText()}");
+            {
+                var raw = result.ValueKind != JsonValueKind.Undefined ? result.GetRawText() : "undefined";
+                throw new Exception($"CDP Error: Page.printToPDF did not return stream handle or data. Response: {raw}");
+            }
             
             if (dataProp.ValueKind == JsonValueKind.String)
             {
-                var bytes = dataProp.GetBytesFromBase64();
-                await destinationStream.WriteAsync(bytes, cancellationToken);
-                await destinationStream.FlushAsync(cancellationToken);
+                if (dataProp.TryGetBytesFromBase64(out var bytes))
+                {
+                    await destinationStream.WriteAsync(bytes, cancellationToken);
+                    await destinationStream.FlushAsync(cancellationToken);
+                }
             }
             _semaphore.Release();
             return;

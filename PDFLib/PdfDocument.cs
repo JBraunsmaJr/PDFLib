@@ -162,7 +162,7 @@ public class PdfDocument : IDisposable
             
             // Register related objects if not yet done
             if (data.Sig.ObjectId == null) RegisterObject(data.Sig);
-            if (data.Ap != null && data.Ap.ObjectId == null) RegisterObject(data.Ap);
+            if (data.Ap is { ObjectId: null }) RegisterObject(data.Ap);
             
             // Register the field itself
             RegisterObject(sigField);
@@ -222,7 +222,7 @@ public class PdfDocument : IDisposable
             var sigField = _signatureFields[name];
             
             if (data.Sig.ObjectId == null) RegisterObject(data.Sig);
-            if (data.Ap != null && data.Ap.ObjectId == null) RegisterObject(data.Ap);
+            if (data.Ap is { ObjectId: null }) RegisterObject(data.Ap);
             RegisterObject(sigField);
         }
 
