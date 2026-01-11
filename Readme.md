@@ -75,6 +75,19 @@ CDP overhead / allocations.
 | Dink   | x3-large-sample.html | 2,611.6 ms |   9.80 ms |   9.17 ms | 2,611.5 ms |         - |         - |  1457.91 KB |
 | PdfLib | x3-large-sample.html | 3,104.5 ms |  66.57 ms | 183.36 ms | 3,062.2 ms | 3000.0000 | 2000.0000 | 21212.35 KB |
 
+Perf branch:
+
+| Method | FileName             | Mean        | Error      | StdDev     | Median      | Allocated   |
+|------- |--------------------- |------------:|-----------:|-----------:|------------:|------------:|
+| Dink   | large-sample.html    | 1,257.07 ms |  24.921 ms |  38.057 ms | 1,260.68 ms |   556.66 KB |                                                                                                                               
+| PdfLib | large-sample.html    | 1,015.48 ms |  20.241 ms |  29.029 ms | 1,008.90 ms |  7318.37 KB |
+| Dink   | sample.html          |   230.42 ms |   2.169 ms |   2.029 ms |   230.75 ms |   119.41 KB |
+| PdfLib | sample.html          |    97.86 ms |   2.052 ms |   5.986 ms |    96.94 ms |    87.57 KB |
+| Dink   | x2-large-sample.html | 2,232.20 ms |  33.663 ms |  38.767 ms | 2,219.86 ms |  1006.61 KB |
+| PdfLib | x2-large-sample.html | 2,106.81 ms |  57.644 ms | 158.769 ms | 2,044.80 ms | 15645.16 KB |
+| Dink   | x3-large-sample.html | 3,564.62 ms | 177.177 ms | 499.731 ms | 3,355.50 ms |  1457.91 KB |
+| PdfLib | x3-large-sample.html | 3,451.96 ms | 134.999 ms | 398.049 ms | 3,256.12 ms |  15780.7 KB |
+
 | Color | Lib       |
 | --- |-----------|
 | Green | DinkToPdf |
