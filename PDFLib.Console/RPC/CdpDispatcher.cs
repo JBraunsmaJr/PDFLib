@@ -31,20 +31,48 @@ public class CdpDispatcher
 
         public void Handle(ReadOnlySequence<byte> message)
         {
-            using var doc = JsonDocument.Parse(message);
-            var root = doc.RootElement;
-            if (root.TryGetProperty("error", out var error))
+            var reader = new Utf8JsonReader(message);
+            var hasResult = false;
+            var hasError = false;
+            
+            while (reader.Read())
             {
-                _tcs.SetException(new Exception($"CDP Error: {error.GetRawText()}"));
+                if (reader.TokenType == JsonTokenType.PropertyName)
+                {
+                    byte[]? rented = null;
+                    ReadOnlySpan<byte> span;
+                    if (!reader.HasValueSequence)
+                    {
+                        span = reader.ValueSpan;
+                    }
+                    else
+                    {
+                        rented = ArrayPool<byte>.Shared.Rent((int)reader.ValueSequence.Length);
+                        reader.ValueSequence.CopyTo(rented);
+                        span = rented.AsSpan(0, (int)reader.ValueSequence.Length);
+                    }
+                    reader.Read();
+                    
+                    if (span.SequenceEqual(ResultBytes))
+                    {
+                        if (rented != null) ArrayPool<byte>.Shared.Return(rented);
+                        var element = JsonElement.ParseValue(ref reader);
+                        _tcs.SetResult(element.Clone());
+                        return;
+                    }
+                    if (span.SequenceEqual(ErrorBytes))
+                    {
+                        if (rented != null) ArrayPool<byte>.Shared.Return(rented);
+                        var element = JsonElement.ParseValue(ref reader);
+                        _tcs.SetException(new Exception($"CDP Error: {element.GetRawText()}"));
+                        return;
+                    }
+                    if (rented != null) ArrayPool<byte>.Shared.Return(rented);
+                    reader.Skip();
+                }
             }
-            else if (root.TryGetProperty("result", out var result))
-            {
-                _tcs.SetResult(result.Clone());
-            }
-            else
-            {
-                _tcs.SetResult(default);
-            }
+            
+            _tcs.SetResult(default);
         }
 
         public void SetException(Exception ex) => _tcs.TrySetException(ex);
@@ -231,50 +259,24 @@ public class CdpDispatcher
         {
             if (reader.TokenType == JsonTokenType.PropertyName)
             {
-                var span = reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan;
-                reader.Read();
-                
-                if (span.SequenceEqual(IdBytes))
+                if (!reader.HasValueSequence)
                 {
-                    if (reader.TokenType == JsonTokenType.Number)
-                    {
-                        id = reader.GetInt32();
-                    }
-                    else if (reader.TokenType == JsonTokenType.String)
-                    {
-                        var idStr = reader.GetString();
-                        if (int.TryParse(idStr, out var parsedId))
-                        {
-                            id = parsedId;
-                        }
-                    }
-                }
-                else if (span.SequenceEqual(MethodBytes))
-                {
-                    method = reader.GetString();
-                }
-                else if (span.SequenceEqual(ParamsBytes))
-                {
-                    // If we have handlers, we'll need to parse this later
-                    // but we need to move the reader forward
-                    reader.Skip();
-                }
-                else if (span.SequenceEqual(SessionIdBytes))
-                {
-                    // Skip session id value
-                    reader.Skip();
-                }
-                else if (span.SequenceEqual(ResultBytes))
-                {
-                    hasResult = true;
-                }
-                else if (span.SequenceEqual(ErrorBytes))
-                {
-                    hasError = true;
+                    ProcessProperty(reader.ValueSpan, ref reader, ref id, ref method, ref hasResult, ref hasError);
                 }
                 else
                 {
-                    reader.Skip();
+                    // Most CDP property names are short and fit in a small buffer.
+                    // We can use a pooled array for larger ones if needed, but 128 is plenty for CDP.
+                    byte[] rented = ArrayPool<byte>.Shared.Rent((int)reader.ValueSequence.Length);
+                    try
+                    {
+                        reader.ValueSequence.CopyTo(rented);
+                        ProcessProperty(rented.AsSpan(0, (int)reader.ValueSequence.Length), ref reader, ref id, ref method, ref hasResult, ref hasError);
+                    }
+                    finally
+                    {
+                        ArrayPool<byte>.Shared.Return(rented);
+                    }
                 }
             }
             if (id.HasValue && (method != null || hasResult || hasError)) break;
@@ -285,19 +287,47 @@ public class CdpDispatcher
             if (_eventHandlers.TryGetValue(method, out var handlers))
             {
                 // Only parse params if we actually have handlers
-                using var doc = JsonDocument.Parse(message);
-                if (doc.RootElement.TryGetProperty("params", out var p))
+                // Use Utf8JsonReader to find the params property instead of JsonDocument.Parse
+                var paramsReader = new Utf8JsonReader(message);
+                var foundParams = false;
+                while (paramsReader.Read())
                 {
-                    // Avoid ToArray() if possible
-                    lock (handlers)
+                    if (paramsReader.TokenType == JsonTokenType.PropertyName)
                     {
-                        foreach (var h in handlers)
+                        ReadOnlySpan<byte> pSpan;
+                        byte[]? pRented = null;
+                        if (!paramsReader.HasValueSequence)
                         {
-                            h(p);
+                            pSpan = paramsReader.ValueSpan;
                         }
+                        else
+                        {
+                            pRented = ArrayPool<byte>.Shared.Rent((int)paramsReader.ValueSequence.Length);
+                            paramsReader.ValueSequence.CopyTo(pRented);
+                            pSpan = pRented.AsSpan(0, (int)paramsReader.ValueSequence.Length);
+                        }
+                        paramsReader.Read();
+
+                        if (pSpan.SequenceEqual(ParamsBytes))
+                        {
+                            if (pRented != null) ArrayPool<byte>.Shared.Return(pRented);
+                            var p = JsonElement.ParseValue(ref paramsReader);
+                            lock (handlers)
+                            {
+                                foreach (var h in handlers)
+                                {
+                                    h(p);
+                                }
+                            }
+                            foundParams = true;
+                            break;
+                        }
+                        if (pRented != null) ArrayPool<byte>.Shared.Return(pRented);
+                        paramsReader.Skip();
                     }
                 }
-                else
+
+                if (!foundParams)
                 {
                     lock (handlers)
                     {
@@ -313,6 +343,53 @@ public class CdpDispatcher
         if (id.HasValue && _pendingRequests.TryRemove(id.Value, out var handler))
         {
             handler.Handle(message);
+        }
+    }
+
+    private void ProcessProperty(ReadOnlySpan<byte> span, ref Utf8JsonReader reader, ref int? id, ref string? method, ref bool hasResult, ref bool hasError)
+    {
+        reader.Read();
+        if (span.SequenceEqual(IdBytes))
+        {
+            if (reader.TokenType == JsonTokenType.Number)
+            {
+                id = reader.GetInt32();
+            }
+            else if (reader.TokenType == JsonTokenType.String)
+            {
+                var idStr = reader.GetString();
+                if (int.TryParse(idStr, out var parsedId))
+                {
+                    id = parsedId;
+                }
+            }
+        }
+        else if (span.SequenceEqual(MethodBytes))
+        {
+            method = reader.GetString();
+        }
+        else if (span.SequenceEqual(ParamsBytes))
+        {
+            // If we have handlers, we'll need to parse this later
+            // but we need to move the reader forward
+            reader.Skip();
+        }
+        else if (span.SequenceEqual(SessionIdBytes))
+        {
+            // Skip session id value
+            reader.Skip();
+        }
+        else if (span.SequenceEqual(ResultBytes))
+        {
+            hasResult = true;
+        }
+        else if (span.SequenceEqual(ErrorBytes))
+        {
+            hasError = true;
+        }
+        else
+        {
+            reader.Skip();
         }
     }
 }

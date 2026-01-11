@@ -40,95 +40,142 @@ public class CdpPage : IAsyncDisposable
                 while (reader.Read())
                 {
                     if (reader.TokenType != JsonTokenType.PropertyName) continue;
-                    
-                    var propertySpan = reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan;
-                    reader.Read();
-                        
-                    if (propertySpan.SequenceEqual(ErrorBytes))
+
+                    byte[]? rentedProp = null;
+                    ReadOnlySpan<byte> propertySpan;
+                    if (!reader.HasValueSequence)
                     {
-                        hasError = true;
-                        errorText = reader.TokenType == JsonTokenType.String ? reader.GetString() : "Complex error object";
+                        propertySpan = reader.ValueSpan;
                     }
-                    else if (propertySpan.SequenceEqual(ResultBytes))
+                    else
                     {
-                        while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
+                        rentedProp = ArrayPool<byte>.Shared.Rent((int)reader.ValueSequence.Length);
+                        reader.ValueSequence.CopyTo(rentedProp);
+                        propertySpan = rentedProp.AsSpan(0, (int)reader.ValueSequence.Length);
+                    }
+                    reader.Read();
+
+                    try
+                    {
+                        if (propertySpan.SequenceEqual(ErrorBytes))
                         {
-                            if (reader.TokenType != JsonTokenType.PropertyName) continue;
-                            
-                            var resultPropSpan = reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan;
-                            reader.Read();
-                                
-                            if (resultPropSpan.SequenceEqual(EofBytes))
+                            hasError = true;
+                            errorText = reader.TokenType == JsonTokenType.String ? reader.GetString() : "Complex error object";
+                        }
+                        else if (propertySpan.SequenceEqual(ResultBytes))
+                        {
+                            while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
                             {
-                                eof = reader.GetBoolean();
-                            }
-                            else if (resultPropSpan.SequenceEqual(Base64EncodedBytes))
-                            {
-                                base64Encoded = reader.GetBoolean();
-                            }
-                            else if (resultPropSpan.SequenceEqual(DataBytes))
-                            {
-                                if (base64Encoded)
+                                if (reader.TokenType != JsonTokenType.PropertyName) continue;
+
+                                byte[]? rentedResultProp = null;
+                                ReadOnlySpan<byte> resultPropSpan;
+                                if (!reader.HasValueSequence)
                                 {
-                                    // Decode directly from the reader's buffer to avoid string allocation
-                                    var base64Length = reader.HasValueSequence ? (int)reader.ValueSequence.Length : reader.ValueSpan.Length;
-                                    var maxByteCount = (base64Length * 3 + 3) / 4;
-                                    var buffer = ArrayPool<byte>.Shared.Rent(maxByteCount);
-                                    try
+                                    resultPropSpan = reader.ValueSpan;
+                                }
+                                else
+                                {
+                                    rentedResultProp = ArrayPool<byte>.Shared.Rent((int)reader.ValueSequence.Length);
+                                    reader.ValueSequence.CopyTo(rentedResultProp);
+                                    resultPropSpan = rentedResultProp.AsSpan(0, (int)reader.ValueSequence.Length);
+                                }
+                                reader.Read();
+
+                                try
+                                {
+                                    if (resultPropSpan.SequenceEqual(EofBytes))
                                     {
-                                        if (reader.HasValueSequence)
+                                        eof = reader.GetBoolean();
+                                    }
+                                    else if (resultPropSpan.SequenceEqual(Base64EncodedBytes))
+                                    {
+                                        base64Encoded = reader.GetBoolean();
+                                    }
+                                    else if (resultPropSpan.SequenceEqual(DataBytes))
+                                    {
+                                        if (base64Encoded)
                                         {
-                                            var seq = reader.ValueSequence;
-                                            // Copy to pooled buffer for decoding
-                                            var tempBase64 = ArrayPool<byte>.Shared.Rent((int)seq.Length);
-                                            try {
-                                                seq.CopyTo(tempBase64);
-                                                var result = Base64.DecodeFromUtf8(tempBase64.AsSpan(0, (int)seq.Length), buffer, out _, out var written);
-                                                if (result == OperationStatus.Done)
+                                            // Decode directly from the reader's buffer to avoid string allocation
+                                            var base64Length = reader.HasValueSequence ? (int)reader.ValueSequence.Length : reader.ValueSpan.Length;
+                                            var maxByteCount = (base64Length * 3 + 3) / 4;
+                                            var buffer = ArrayPool<byte>.Shared.Rent(maxByteCount);
+                                            try
+                                            {
+                                                if (reader.HasValueSequence)
                                                 {
-                                                    _destinationStream.Write(buffer, 0, written);
+                                                    var seq = reader.ValueSequence;
+                                                    // Use a larger buffer if needed, but avoid double rental if possible
+                                                    // Base64.DecodeFromUtf8 needs a contiguous span
+                                                    var tempBase64 = ArrayPool<byte>.Shared.Rent((int)seq.Length);
+                                                    try
+                                                    {
+                                                        seq.CopyTo(tempBase64);
+                                                        var result = Base64.DecodeFromUtf8(tempBase64.AsSpan(0, (int)seq.Length), buffer, out _, out var written);
+                                                        if (result == OperationStatus.Done)
+                                                        {
+                                                            _destinationStream.Write(buffer, 0, written);
+                                                        }
+                                                        else
+                                                        {
+                                                            // Fallback if buffer too small (shouldn't happen with our maxByteCount)
+                                                            var bytes = reader.GetBytesFromBase64();
+                                                            _destinationStream.Write(bytes);
+                                                        }
+                                                    }
+                                                    finally
+                                                    {
+                                                        ArrayPool<byte>.Shared.Return(tempBase64);
+                                                    }
                                                 }
                                                 else
                                                 {
-                                                    // Fallback if buffer too small (shouldn't happen with our maxByteCount)
-                                                    var bytes = reader.GetBytesFromBase64();
-                                                    _destinationStream.Write(bytes);
+                                                    // reader.ValueSpan is UTF8 bytes of the base64 string
+                                                    // We can use Base64.DecodeFromUtf8
+                                                    var span = reader.ValueSpan;
+                                                    var result = Base64.DecodeFromUtf8(span, buffer, out _, out var written);
+                                                    if (result == OperationStatus.Done)
+                                                    {
+                                                        _destinationStream.Write(buffer, 0, written);
+                                                    }
+                                                    else
+                                                    {
+                                                        // Fallback
+                                                        var bytes = reader.GetBytesFromBase64();
+                                                        _destinationStream.Write(bytes);
+                                                    }
                                                 }
-                                            } finally {
-                                                ArrayPool<byte>.Shared.Return(tempBase64);
+                                            }
+                                            finally
+                                            {
+                                                ArrayPool<byte>.Shared.Return(buffer);
                                             }
                                         }
                                         else
                                         {
-                                            // reader.ValueSpan is UTF8 bytes of the base64 string
-                                            // We can use Base64.DecodeFromUtf8
-                                            var span = reader.ValueSpan;
-                                            var result = Base64.DecodeFromUtf8(span, buffer, out _, out var written);
-                                            if (result == OperationStatus.Done)
+                                            // Non-base64 data (unlikely for PDF chunks)
+                                            if (!reader.HasValueSequence)
                                             {
-                                                _destinationStream.Write(buffer, 0, written);
+                                                _destinationStream.Write(reader.ValueSpan);
                                             }
                                             else
                                             {
-                                                // Fallback
-                                                var bytes = reader.GetBytesFromBase64();
+                                                var bytes = reader.ValueSequence.ToArray();
                                                 _destinationStream.Write(bytes);
                                             }
                                         }
                                     }
-                                    finally
-                                    {
-                                        ArrayPool<byte>.Shared.Return(buffer);
-                                    }
                                 }
-                                else
+                                finally
                                 {
-                                    // Non-base64 data (unlikely for PDF chunks)
-                                    var bytes = reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan.ToArray();
-                                    _destinationStream.Write(bytes);
+                                    if (rentedResultProp != null) ArrayPool<byte>.Shared.Return(rentedResultProp);
                                 }
                             }
                         }
+                    }
+                    finally
+                    {
+                        if (rentedProp != null) ArrayPool<byte>.Shared.Return(rentedProp);
                     }
                 }
 
