@@ -8,7 +8,7 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\PDFLib\PDFLib.csproj" />
+      <ProjectReference Include="..\PDFLib.Razor\PDFLib.Razor.csproj" />
     </ItemGroup>
 
 </Project>

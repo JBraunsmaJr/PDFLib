@@ -1,5 +1,5 @@
 ﻿using System.Diagnostics;
-using PDFLib.Console;
+using PDFLib.Chromium;
 
 const string OUTPUT_DIRECTORY = "/out";
 if (!Directory.Exists(OUTPUT_DIRECTORY)) Directory.CreateDirectory(OUTPUT_DIRECTORY);

@@ -1,9 +1,9 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
-using PDFLib.Console.RPC;
+using PDFLib.Chromium.RPC;
 
-namespace PDFLib.Console;
+namespace PDFLib.Chromium;
 
 public class ChromiumBrowser : IDisposable
 {

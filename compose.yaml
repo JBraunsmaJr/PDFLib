@@ -1,9 +1,9 @@
 ﻿services:
-  pdflib.console:
-    image: pdflib.console
+  pdflib.chromium:
+    image: pdflib.chromium
     build:
       context: .
-      dockerfile: PDFLib.Console/Dockerfile
+      dockerfile: PDFLib.Chromium/Dockerfile
   pdflib.benchmarks:
     image: pdflib-benchmarks
     build:

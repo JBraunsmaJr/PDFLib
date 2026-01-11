@@ -4,7 +4,7 @@ using System.Collections.Concurrent;
 using System.IO.Pipelines;
 using System.Text.Json;
 
-namespace PDFLib.Console.RPC;
+namespace PDFLib.Chromium.RPC;
 
 /// <summary>
 /// Chrome DevTools Protocol (CDP) dispatcher for handling communication with a Chrome browser instance.

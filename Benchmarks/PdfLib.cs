@@ -1,4 +1,4 @@
-using PDFLib.Console;
+using PDFLib.Chromium;
 
 namespace Benchmarks;
 

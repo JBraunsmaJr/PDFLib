@@ -1,6 +1,6 @@
 services:
   app:
     build: .
-    image: pdflib-console
+    image: pdflib-chromium
     volumes:
       - ./test-out:/out

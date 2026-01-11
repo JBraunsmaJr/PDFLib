@@ -3,7 +3,7 @@ using System.Collections.Concurrent;
 using System.Buffers;
 using System.Buffers.Text;
 
-namespace PDFLib.Console.RPC;
+namespace PDFLib.Chromium.RPC;
 
 /// <summary>
 /// Chrome DevTools Protocol (CDP) page for interacting with a specific browser tab.
