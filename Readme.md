@@ -11,7 +11,7 @@ in it.
 This project is still in its early stages and is not yet ready for production use.
 
 
-![comparison chart](./assets/comparisonchart.png)
+![comparison chart](./assets/benchmarks.png)
 
 ----
 
