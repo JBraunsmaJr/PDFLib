@@ -1,7 +1,7 @@
 ﻿using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using PDFLib;
-using PdfTest;
+using PDFLib.Razor.Test;
 using SkiaSharp;
 
 var imagePath = Path.Join(AppDomain.CurrentDomain.BaseDirectory, "test.png");

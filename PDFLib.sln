@@ -2,7 +2,7 @@
 Microsoft Visual Studio Solution File, Format Version 12.00
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PDFLib.Razor", "PDFLib.Razor\PDFLib.Razor.csproj", "{AAAC8B02-5F64-4419-8DC4-90AD5C39EE48}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PdfTest", "PdfTest\PdfTest.csproj", "{F3650EBE-DD76-48C7-9FD4-D1724472BB01}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PDFLib.Razor.Test", "PDFLib.Razor.Test\PDFLib.Razor.Test.csproj", "{F3650EBE-DD76-48C7-9FD4-D1724472BB01}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PDFLib.Chromium", "PDFLib.Chromium\PDFLib.Chromium.csproj", "{B72BB04C-49B8-4A23-9E06-56CF42EF04A1}"
 EndProject
