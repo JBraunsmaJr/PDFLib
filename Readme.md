@@ -13,25 +13,38 @@ This project is still in its early stages and is not yet ready for production us
 
 ![comparison chart](./assets/comparisonchart.png)
 
+----
+
+Implemented "Targeted Parsing", by using Utf8JsonReader to find the result/error property first, then only parse that specific subtree instead of
+the entire message.
+
+Traded small allocations (High GC pressure) for larger upfront allocations (1MB buffer).
+
+A more predicatable working set with 1 MB scratch buffer.
+
+Learned that the u8 literals are specially handled by the JIT compiler. It embeds UTF-8 bytes in the assembly data section, 
+avoiding heap allocations. By using the predefined literals in variables we lost the fragmentation handling `ValueTextEquals` provides.
+
+Zero Allocation Routing:
+Changed `CdpDispatcher.ProcessMessage`, we use `GetCachedStringZeroAlloc` with `ValueTextEquals` to match event names directly
+against raw UTF-8 bytes. We previously allocated a string to check `_eventHandlers` dictionary keys. Now we maintain a small cache 
+list of known event names and use `reader.ValueTextEquals` to match raw bytes without allocation. This handles both contiguous and fragmented 
+data (from `PipeReader`) and correctly processes JSON escapes. For unknown message ID/metadata we `Skip()` entirely without allocating.
 
 ----
 
 # Overview
 
-The C# Project **PDFLib** is a library which manually crafts PDFs, without using third-party libraries. Went on to
-explore
-the possibility of using Razor syntax to generate PDFs as well, instead of pursuing a fluent-api. After playing with the
-idea,
+The C# Project **PDFLib.Razor** is a library which manually crafts PDFs, without using third-party libraries. Went on to explore
+the possibility of using Razor syntax to generate PDFs as well, instead of pursuing a fluent-api. After playing with the idea,
 I realized the difficulty in pursuing styling. Developers would also require a "PDF" version of their webpages, which is
 not ideal.
 
-To leverage existing HTML/CSS, one requires a renderer. WebKit and Blink are the two most popular choices. For the time
-being,
+To leverage existing HTML/CSS, one requires a renderer. WebKit and Blink are the two most popular choices. For the time being,
 I've opted to use Chrome's headless Chromium since it's said to be pixel-perfect when creating PDFs.
 
-**PDFLib.Console** is where Chromium is being explored. Interestingly enough, for small workloads it outperforms
-DinkToPdf,
-but that quickly changes as the workload size increases.
+**PDFLib.Chromium** is where Chromium is being explored. The difficulty lies in extracting as much performance out of it as possible. There is an inherit overhead by using a browser (albeit headless)
+as it has to render using Blink engine, and runs the V8 engine for javascript.
 
 # Research / Path
 
@@ -72,9 +85,14 @@ Apparently the following errors are "normal" and do not impact PDF generation
 
 ## Benchmarks currently
 
-Would appear as the file increases in size, PdfLib decreases in performance. Requires further investigation, quite
-possible it's the
-CDP overhead / allocations.
+| File                 | Page Count |
+|----------------------|------------|
+| sample.html          | 2          |
+| large-sample.html    | 140        |
+| x2-large-sample.html | 280        |
+| x3-large-sample.html | 420        |
+
+At first, the library out performed DinkToPdf for smaller workloads. That changed with larger workloads. Memory allocations ballooned and speed took a hit.
 
 | Method | FileName             |       Mean |     Error |    StdDev |     Median |      Gen0 |      Gen1 |   Allocated |
 |--------|----------------------|-----------:|----------:|----------:|-----------:|----------:|----------:|------------:|
@@ -87,7 +105,7 @@ CDP overhead / allocations.
 | Dink   | x3-large-sample.html | 2,611.6 ms |   9.80 ms |   9.17 ms | 2,611.5 ms |         - |         - |  1457.91 KB |
 | PdfLib | x3-large-sample.html | 3,104.5 ms |  66.57 ms | 183.36 ms | 3,062.2 ms | 3000.0000 | 2000.0000 | 21212.35 KB |
 
-Perf branch:
+Perf branch (benchmarked on a separate machine):
 
 | Method | FileName             |        Mean |      Error |     StdDev |      Median |   Allocated |
 |--------|----------------------|------------:|-----------:|-----------:|------------:|------------:|
@@ -100,7 +118,8 @@ Perf branch:
 | Dink   | x3-large-sample.html | 3,564.62 ms | 177.177 ms | 499.731 ms | 3,355.50 ms |  1457.91 KB |
 | PdfLib | x3-large-sample.html | 3,451.96 ms | 134.999 ms | 398.049 ms | 3,256.12 ms |  15780.7 KB |
 
-More Perf:
+We finally reached a somewhat margin of error here where the library out performs DinkToHtml for smaller workloads, and is about the same
+for larger ones. For reference, x3-large-sample.html equates to 420 pages. 
 
 | Method | FileName             | Mean        | Error     | StdDev    | Median      | Allocated   |
 |------- |--------------------- |------------:|----------:|----------:|------------:|------------:|
@@ -113,27 +132,14 @@ More Perf:
 | Dink   | x3-large-sample.html | 2,599.59 ms |  9.782 ms |  9.150 ms | 2,601.43 ms |  1698.45 KB |
 | PdfLib | x3-large-sample.html | 2,833.06 ms | 11.097 ms |  9.267 ms | 2,833.30 ms | 16514.05 KB |
 
-| Color | Lib       |
-|-------|-----------|
-| Green | DinkToPdf |
-| Black | PDFLib    |
+For about 840 pages (simply doubled the x3-large.sample.html file), we achieve the following:
 
-![Benchmark](./assets/performance-chart.png)
+| Method | FileName             | Mean    | Error    | StdDev   | Allocated |
+|------- |--------------------- |--------:|---------:|---------:|----------:|
+| Dink   | x6-large-sample.html | 4.922 s | 0.0335 s | 0.0280 s |   3.21 MB |                                                                                                                             
+| PdfLib | x6-large-sample.html | 8.734 s | 0.0422 s | 0.0353 s |   33.5 MB |
 
-----
+DinkToPdf builds on top of wkhtmltopdf library which was the defacto standard for server-based PDF generation. However, it was built on top of QT engine's implementation which is no longer maintained or supported. 
+It's not recommended to use wkhtmltopdf due to security vulnerabilities. Also does not support the latest JavaScript, HTML, or CSS features.
 
-Implemented "Targeted Parsing", by using Utf8JsonReader to find the result/error property first, then only parse that specific subtree instead of
-the entire message.
-
-Traded small allocations (High GC pressure) for larger upfront allocations (1MB buffer).
-
-A more predicatable working set with 1 MB scratch buffer.
-
-Learned that the u8 literals are specially handled by the JIT compiler. It embeds UTF-8 bytes in the assembly data section, 
-avoiding heap allocations. By using the predefined literals in variables we lost the fragmentation handling `ValueTextEquals` provides.
-
-Zero Allocation Routing:
-Changed `CdpDispatcher.ProcessMessage`, we use `GetCachedStringZeroAlloc` with `ValueTextEquals` to match event names directly
-against raw UTF-8 bytes. We previously allocated a string to check `_eventHandlers` dictionary keys. Now we maintain a small cache 
-list of known event names and use `reader.ValueTextEquals` to match raw bytes without allocation. This handles both contiguous and fragmented 
-data (from `PipeReader`) and correctly processes JSON escapes. For unknown message ID/metadata we `Skip()` entirely without allocating.
+Since open-source libraries have not replaced it, industry has shifted towards using chromium's tooling. 
