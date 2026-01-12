@@ -10,6 +10,8 @@ in it.
 
 This project is still in its early stages and is not yet ready for production use.
 
+Preface this with... it took until now for me to realize the benchmarks for PDF Lib was including the memory stream we were writing to (to simulate a user receiving their PDF). 
+That's why you'll see the significant reduction in memory. 
 
 ![comparison chart](./assets/benchmarks.png)
 
