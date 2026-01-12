@@ -2,10 +2,8 @@
 
 public class PdfSignature : PdfObject
 {
-    private readonly PdfDictionary _dict = new();
     private readonly int _contentsSize;
-    public long ContentsOffset { get; private set; }
-    public long ByteRangeOffset { get; private set; }
+    private readonly PdfDictionary _dict = new();
 
     public PdfSignature(int contentsSize = 4096)
     {
@@ -16,19 +14,22 @@ public class PdfSignature : PdfObject
         _dict.Add("/M", new PdfString($"D:{DateTime.Now:yyyyMMddHHmmss}Z"));
     }
 
+    public long ContentsOffset { get; private set; }
+    public long ByteRangeOffset { get; private set; }
+
     public override void WriteTo(BinaryWriter writer)
     {
         _dict.Add("/Contents", new PdfPlaceholder(_contentsSize));
-        
+
         // Space for [0 1234567890 1234567890 1234567890]
-        _dict.Add("/ByteRange", new PdfPlaceholder(64)); 
+        _dict.Add("/ByteRange", new PdfPlaceholder(64));
 
         /*
             We need to capture the offsets of these placeholders
             However, PdfDictionary.WriteTo doesn't easily let us know where it wrote what.
-            Let's refine PdfDictionary or write it manually here. 
+            Let's refine PdfDictionary or write it manually here.
          */
-        
+
         writer.Write(ToAscii("<<"));
         foreach (var key in new[] { "/Type", "/Filter", "/SubFilter", "/M" })
         {
@@ -59,12 +60,16 @@ public class PdfSignature : PdfObject
 internal class PdfPlaceholder : PdfObject
 {
     private readonly int _size;
-    public PdfPlaceholder(int size) => _size = size;
+
+    public PdfPlaceholder(int size)
+    {
+        _size = size;
+    }
 
     public override void WriteTo(BinaryWriter writer)
     {
         // Likely contents, use < > for hex
-        if (_size > 100) 
+        if (_size > 100)
         {
             writer.Write((byte)'<');
             writer.Write(new byte[_size - 2]);

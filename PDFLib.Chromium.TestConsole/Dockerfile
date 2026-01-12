@@ -61,17 +61,17 @@ WORKDIR /app
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
-COPY ["PDFLib.Chromium.csproj", "PDFLib.Chromium/PDFLib.Chromium.csproj"]
-RUN dotnet restore "PDFLib.Chromium/PDFLib.Chromium.csproj"
-WORKDIR "/src/PDFLib.Chromium"
+COPY ["PDFLib.Chromium.TestConsole..csproj", "PDFLib.Chromium.TestConsole/PDFLib.Chromium.TestConsole.csproj"]
+RUN dotnet restore "PDFLib.Chromium.TestConsole/PDFLib.Chromium.TestConsole.csproj"
+WORKDIR "/src/PDFLib.Chromium.TestConsole"
 COPY . .
-RUN dotnet build "./PDFLib.Chromium.csproj" -c $BUILD_CONFIGURATION -o /app/build
+RUN dotnet build "./PDFLib.Chromium.TestConsole.csproj" -c $BUILD_CONFIGURATION -o /app/build
 
 FROM build AS publish
 ARG BUILD_CONFIGURATION=Release
-RUN dotnet publish "./PDFLib.Chromium.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
+RUN dotnet publish "./PDFLib.Chromium.TestConsole.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
 
 FROM base AS final
 WORKDIR /app
 COPY --from=publish /app/publish .
-ENTRYPOINT ["dotnet", "PDFLib.Chromium.dll"]
+ENTRYPOINT ["dotnet", "PDFLib.Chromium.TestConsole.dll"]

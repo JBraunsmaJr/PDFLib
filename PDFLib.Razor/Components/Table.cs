@@ -11,10 +11,7 @@ public class Table : ComponentBase
     protected override void BuildRenderTree(RenderTreeBuilder builder)
     {
         builder.OpenElement(0, "table");
-        if (!string.IsNullOrEmpty(ColumnWidths))
-        {
-            builder.AddAttribute(1, "columnwidths", ColumnWidths);
-        }
+        if (!string.IsNullOrEmpty(ColumnWidths)) builder.AddAttribute(1, "columnwidths", ColumnWidths);
         builder.AddContent(2, ChildContent);
         builder.CloseElement();
     }

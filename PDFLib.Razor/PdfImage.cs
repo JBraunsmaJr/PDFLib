@@ -6,13 +6,11 @@ namespace PDFLib;
 
 public class PdfImage : PdfObject, IDisposable
 {
-    public int Width { get; }
-    public int Height { get; }
-    private readonly PdfDictionary _dict = new();
     private readonly byte[]? _data;
+    private readonly PdfDictionary _dict = new();
     private readonly string? _filePath;
     private readonly string _filter;
-    private bool _isTempFile;
+    private readonly bool _isTempFile;
 
     public PdfImage(int width, int height, byte[] data, string filter = "/FlateDecode")
     {
@@ -34,6 +32,23 @@ public class PdfImage : PdfObject, IDisposable
         _filter = filter;
 
         InitializeDict();
+    }
+
+    public int Width { get; }
+    public int Height { get; }
+
+    public void Dispose()
+    {
+        if (!_isTempFile || _filePath is null || !File.Exists(_filePath)) return;
+
+        try
+        {
+            File.Delete(_filePath);
+        }
+        catch
+        {
+            // Ignore cleanup errors
+        }
     }
 
     private void InitializeDict()
@@ -61,13 +76,14 @@ public class PdfImage : PdfObject, IDisposable
         {
             var fileInfo = new FileInfo(_filePath);
             _dict.Add("/Length", new PdfNumber(fileInfo.Length));
-            
+
             _dict.WriteTo(writer);
             writer.Write(ToAscii("\nstream\n"));
             using (var fs = File.OpenRead(_filePath))
             {
                 fs.CopyTo(writer.BaseStream);
             }
+
             writer.Write(ToAscii("\nendstream"));
         }
     }
@@ -106,7 +122,7 @@ public class PdfImage : PdfObject, IDisposable
              */
             using var converted = new SKBitmap(width, height, SKColorType.Rgba8888, SKAlphaType.Opaque);
             bitmap.CopyTo(converted);
-            
+
             var pixels = converted.GetPixelSpan();
             var rowSize = width * 4;
 
@@ -115,29 +131,16 @@ public class PdfImage : PdfObject, IDisposable
                 var rowData = new byte[width * 3];
                 for (var x = 0; x < width; x++)
                 {
-                    var offset = (y * rowSize) + (x * 4);
-                    rowData[x * 3] = pixels[offset + 2];     // B -> R
+                    var offset = y * rowSize + x * 4;
+                    rowData[x * 3] = pixels[offset + 2]; // B -> R
                     rowData[x * 3 + 1] = pixels[offset + 1]; // G -> G
-                    rowData[x * 3 + 2] = pixels[offset];     // R -> B
+                    rowData[x * 3 + 2] = pixels[offset]; // R -> B
                 }
+
                 ds.Write(rowData, 0, rowData.Length);
             }
         }
-        
-        return new PdfImage(width, height, tempFile, true);
-    }
 
-    public void Dispose()
-    {
-        if (!_isTempFile || _filePath is null || !File.Exists(_filePath)) return;
-        
-        try
-        {
-            File.Delete(_filePath);
-        }
-        catch
-        {
-            // Ignore cleanup errors
-        }
+        return new PdfImage(width, height, tempFile, true);
     }
 }

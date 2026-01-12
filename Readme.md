@@ -10,19 +10,28 @@ in it.
 
 This project is still in its early stages and is not yet ready for production use.
 
+
+![comparison chart](./assets/comparisonchart.png)
+
+
 ----
 
 # Overview
 
-The C# Project **PDFLib** is a library which manually crafts PDFs, without using third-party libraries. Went on to explore
-the possibility of using Razor syntax to generate PDFs as well, instead of pursuing a fluent-api. After playing with the idea,
-I realized the difficulty in pursuing styling. Developers would also require a "PDF" version of their webpages, which is not ideal.
+The C# Project **PDFLib** is a library which manually crafts PDFs, without using third-party libraries. Went on to
+explore
+the possibility of using Razor syntax to generate PDFs as well, instead of pursuing a fluent-api. After playing with the
+idea,
+I realized the difficulty in pursuing styling. Developers would also require a "PDF" version of their webpages, which is
+not ideal.
 
-To leverage existing HTML/CSS, one requires a renderer. WebKit and Blink are the two most popular choices. For the time being,
+To leverage existing HTML/CSS, one requires a renderer. WebKit and Blink are the two most popular choices. For the time
+being,
 I've opted to use Chrome's headless Chromium since it's said to be pixel-perfect when creating PDFs.
 
-**PDFLib.Console** is where Chromium is being explored. Interestingly enough, for small workloads it outperforms DinkToPdf,
-but that quickly changes as the workload size increases. 
+**PDFLib.Console** is where Chromium is being explored. Interestingly enough, for small workloads it outperforms
+DinkToPdf,
+but that quickly changes as the workload size increases.
 
 # Research / Path
 
@@ -38,12 +47,13 @@ IronPDF, based on some snooping, appears to have some form of C++ shared librari
 Google suggests using Puppeteer, or websockets. However, I suspect using a named pipe (linux only) will be
 enough.
 
-The `--remote-debugging-pipe` flag leverages file descriptors 3 (Standard in/out), and 4. .NET only supports 0, 1, and 2.
+The `--remote-debugging-pipe` flag leverages file descriptors 3 (Standard in/out), and 4. .NET only supports 0, 1, and
+2.
 So we have to redirect things.
 
 ## Base64
 
-Chromium's CDP sends data using Base64 inside JSON, so there is no way around this in the current DevTools 
+Chromium's CDP sends data using Base64 inside JSON, so there is no way around this in the current DevTools
 Protocol.
 
 Base64 is ~33% larger than raw binary. However, by reading 1MB, the 33% overhead yields about 1.33MB of string data.
@@ -52,6 +62,7 @@ Although not ideal, it's fairly negligible considering the state of the modern i
 ## Known things
 
 Apparently the following errors are "normal" and do not impact PDF generation
+
 ```
 [0104/155522.469691:ERROR:dbus/bus.cc:406] Failed to connect to the bus: Failed to connect to socket /run/dbus/system_bus_socket: No such file or directory                                               
 [0104/155522.470946:ERROR:dbus/bus.cc:406] Failed to connect to the bus: Failed to connect to socket /run/dbus/system_bus_socket: No such file or directory
@@ -61,11 +72,12 @@ Apparently the following errors are "normal" and do not impact PDF generation
 
 ## Benchmarks currently
 
-Would appear as the file increases in size, PdfLib decreases in performance. Requires further investigation, quite possible it's the 
+Would appear as the file increases in size, PdfLib decreases in performance. Requires further investigation, quite
+possible it's the
 CDP overhead / allocations.
 
-| Method | FileName             | Mean       | Error     | StdDev    | Median     | Gen0      | Gen1      | Allocated   |
-|------- |--------------------- |-----------:|----------:|----------:|-----------:|----------:|----------:|------------:|
+| Method | FileName             |       Mean |     Error |    StdDev |     Median |      Gen0 |      Gen1 |   Allocated |
+|--------|----------------------|-----------:|----------:|----------:|-----------:|----------:|----------:|------------:|
 | Dink   | large-sample.html    | 1,463.7 ms |  88.62 ms | 261.30 ms | 1,477.9 ms |         - |         - |   556.66 KB |                                                                                 
 | PdfLib | large-sample.html    | 1,412.9 ms |  83.36 ms | 245.79 ms | 1,521.8 ms | 1000.0000 |         - |  9023.87 KB |
 | Dink   | sample.html          |   226.9 ms |   4.53 ms |   6.04 ms |   224.9 ms |         - |         - |   119.41 KB |
@@ -77,8 +89,8 @@ CDP overhead / allocations.
 
 Perf branch:
 
-| Method | FileName             | Mean        | Error      | StdDev     | Median      | Allocated   |
-|------- |--------------------- |------------:|-----------:|-----------:|------------:|------------:|
+| Method | FileName             |        Mean |      Error |     StdDev |      Median |   Allocated |
+|--------|----------------------|------------:|-----------:|-----------:|------------:|------------:|
 | Dink   | large-sample.html    | 1,257.07 ms |  24.921 ms |  38.057 ms | 1,260.68 ms |   556.66 KB |                                                                                                                               
 | PdfLib | large-sample.html    | 1,015.48 ms |  20.241 ms |  29.029 ms | 1,008.90 ms |  7318.37 KB |
 | Dink   | sample.html          |   230.42 ms |   2.169 ms |   2.029 ms |   230.75 ms |   119.41 KB |
@@ -88,9 +100,40 @@ Perf branch:
 | Dink   | x3-large-sample.html | 3,564.62 ms | 177.177 ms | 499.731 ms | 3,355.50 ms |  1457.91 KB |
 | PdfLib | x3-large-sample.html | 3,451.96 ms | 134.999 ms | 398.049 ms | 3,256.12 ms |  15780.7 KB |
 
+More Perf:
+
+| Method | FileName             | Mean        | Error     | StdDev    | Median      | Allocated   |
+|------- |--------------------- |------------:|----------:|----------:|------------:|------------:|
+| Dink   | large-sample.html    | 1,006.55 ms |  9.404 ms |  8.337 ms | 1,005.49 ms |   636.86 KB |                                                                                                       
+| PdfLib | large-sample.html    |   834.61 ms |  7.265 ms |  6.796 ms |   834.52 ms |  9098.34 KB |
+| Dink   | sample.html          |   247.00 ms |  4.933 ms | 10.512 ms |   249.18 ms |   119.42 KB |
+| PdfLib | sample.html          |    55.03 ms |  3.413 ms |  9.848 ms |    51.38 ms |    86.29 KB |
+| Dink   | x2-large-sample.html | 1,805.79 ms |  9.329 ms |  8.726 ms | 1,805.88 ms |  1166.98 KB |
+| PdfLib | x2-large-sample.html | 1,716.48 ms | 11.120 ms |  9.857 ms | 1,717.10 ms | 16389.27 KB |
+| Dink   | x3-large-sample.html | 2,599.59 ms |  9.782 ms |  9.150 ms | 2,601.43 ms |  1698.45 KB |
+| PdfLib | x3-large-sample.html | 2,833.06 ms | 11.097 ms |  9.267 ms | 2,833.30 ms | 16514.05 KB |
+
 | Color | Lib       |
-| --- |-----------|
+|-------|-----------|
 | Green | DinkToPdf |
 | Black | PDFLib    |
 
 ![Benchmark](./assets/performance-chart.png)
+
+----
+
+Implemented "Targeted Parsing", by using Utf8JsonReader to find the result/error property first, then only parse that specific subtree instead of
+the entire message.
+
+Traded small allocations (High GC pressure) for larger upfront allocations (1MB buffer).
+
+A more predicatable working set with 1 MB scratch buffer.
+
+Learned that the u8 literals are specially handled by the JIT compiler. It embeds UTF-8 bytes in the assembly data section, 
+avoiding heap allocations. By using the predefined literals in variables we lost the fragmentation handling `ValueTextEquals` provides.
+
+Zero Allocation Routing:
+Changed `CdpDispatcher.ProcessMessage`, we use `GetCachedStringZeroAlloc` with `ValueTextEquals` to match event names directly
+against raw UTF-8 bytes. We previously allocated a string to check `_eventHandlers` dictionary keys. Now we maintain a small cache 
+list of known event names and use `reader.ValueTextEquals` to match raw bytes without allocation. This handles both contiguous and fragmented 
+data (from `PipeReader`) and correctly processes JSON escapes. For unknown message ID/metadata we `Skip()` entirely without allocating.

@@ -1,5 +1,4 @@
 using System.Buffers;
-using System.Buffers.Text;
 using System.Collections.Concurrent;
 using System.IO.Pipelines;
 using System.Text.Json;
@@ -11,74 +10,30 @@ namespace PDFLib.Chromium.RPC;
 /// </summary>
 public class CdpDispatcher
 {
-    private readonly Stream _writer;
-    private readonly PipeReader _pipeReader;
-    private readonly ConcurrentDictionary<int, IResponseHandler> _pendingRequests = new();
     private readonly ConcurrentDictionary<string, List<Action<JsonElement>>> _eventHandlers = new();
-    private readonly ConcurrentDictionary<string, string> _stringCache = new();
-    private readonly SemaphoreSlim _writeSemaphore = new(1, 1);
+    private readonly List<string> _fastCacheList = new();
+    private readonly ConcurrentDictionary<int, IResponseHandler> _pendingRequests = new();
+    private readonly PipeReader _pipeReader;
+    private readonly ConcurrentDictionary<string, string> _stringCache = new(StringComparer.Ordinal);
     private readonly ArrayBufferWriter<byte> _writeBuffer = new(4096);
+    private readonly Stream _writer;
+    private readonly SemaphoreSlim _writeSemaphore = new(1, 1);
     private int _nextId;
-    
-    #region PreAllocated
-    /*
-     * Preallocated variables of commonly used things
-     * to help reduce allocations
-     */
-    
-    private static readonly byte[] IdBytes = "id"u8.ToArray();
-    private static readonly byte[] MethodBytes = "method"u8.ToArray();
-    private static readonly byte[] ResultBytes = "result"u8.ToArray();
-    private static readonly byte[] ErrorBytes = "error"u8.ToArray();
-    private static readonly byte[] ParamsBytes = "params"u8.ToArray();
-    private static readonly byte[] SessionIdBytes = "sessionId"u8.ToArray();
-    private static readonly byte[] EmptyParamsBytes = "{}"u8.ToArray();
 
+    #region PreAllocated
+
+    /*
+     * Preallocated variables of commonly used things to help
+     * reduce allocations
+     */
     private static readonly JsonEncodedText IdEncoded = JsonEncodedText.Encode("id"u8);
     private static readonly JsonEncodedText MethodEncoded = JsonEncodedText.Encode("method"u8);
     private static readonly JsonEncodedText ParamsEncoded = JsonEncodedText.Encode("params"u8);
     private static readonly JsonEncodedText SessionIdEncoded = JsonEncodedText.Encode("sessionId"u8);
+    private static readonly byte[] EmptyParamsBytes = "{}"u8.ToArray();
+
     #endregion
     
-    public interface IResponseHandler
-    {
-        void Handle(ReadOnlySequence<byte> message);
-        void SetException(Exception ex);
-    }
-
-    private class JsonResponseHandler : IResponseHandler
-    {
-        private readonly TaskCompletionSource<JsonElement> _tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public Task<JsonElement> Task => _tcs.Task;
-
-        public void Handle(ReadOnlySequence<byte> message)
-        {
-            try
-            {
-                using var doc = JsonDocument.Parse(message);
-                var root = doc.RootElement;
-                if (root.TryGetProperty("result", out var result))
-                {
-                    _tcs.SetResult(result.ValueKind == JsonValueKind.Undefined ? default : result.Clone());
-                }
-                else if (root.TryGetProperty("error", out var error))
-                {
-                    _tcs.SetException(new Exception($"CDP Error: {error.GetRawText()}"));
-                }
-                else
-                {
-                    _tcs.SetResult(default);
-                }
-            }
-            catch (Exception ex)
-            {
-                _tcs.SetException(ex);
-            }
-        }
-
-        public void SetException(Exception ex) => _tcs.TrySetException(ex);
-    }
-
     public CdpDispatcher(Stream writer, Stream reader)
     {
         _writer = writer;
@@ -93,12 +48,20 @@ public class CdpDispatcher
     /// <param name="handler">Handler for the specified CDP method</param>
     public void On(string method, Action<JsonElement> handler)
     {
+        // Add to fast cache list for iteration
+        if (_stringCache.TryAdd(method, method))
+            lock (_fastCacheList)
+            {
+                _fastCacheList.Add(method);
+            }
+
         _eventHandlers.AddOrUpdate(method, _ => [handler], (_, list) =>
         {
             lock (list)
             {
                 list.Add(handler);
             }
+
             return list;
         });
     }
@@ -111,10 +74,46 @@ public class CdpDispatcher
     public void Off(string method, Action<JsonElement> handler)
     {
         if (!_eventHandlers.TryGetValue(method, out var list)) return;
-        
         lock (list)
         {
             list.Remove(handler);
+        }
+    }
+
+    public async Task SendCommandInternalAsync(string method, object? @params, string? sessionId,
+        IResponseHandler handler, CancellationToken cancellationToken = default)
+    {
+        var id = Interlocked.Increment(ref _nextId);
+        _pendingRequests[id] = handler;
+
+        await _writeSemaphore.WaitAsync(cancellationToken);
+        try
+        {
+            _writeBuffer.Clear();
+
+            // ReSharper disable once UseAwaitUsing
+            // Await using would introduce context-switching and extra memory for async structure
+            using (var writer = new Utf8JsonWriter(_writeBuffer))
+            {
+                writer.WriteStartObject();
+                writer.WriteNumber(IdEncoded, id);
+                writer.WriteString(MethodEncoded, method);
+                writer.WritePropertyName(ParamsEncoded);
+                if (@params != null) JsonSerializer.Serialize(writer, @params, @params.GetType());
+                else writer.WriteRawValue(EmptyParamsBytes);
+                if (!string.IsNullOrEmpty(sessionId)) writer.WriteString(SessionIdEncoded, sessionId);
+                writer.WriteEndObject();
+            }
+
+            var span = _writeBuffer.GetSpan(1);
+            span[0] = 0;
+            _writeBuffer.Advance(1);
+            await _writer.WriteAsync(_writeBuffer.WrittenMemory, cancellationToken);
+            await _writer.FlushAsync(cancellationToken);
+        }
+        finally
+        {
+            _writeSemaphore.Release();
         }
     }
 
@@ -126,68 +125,12 @@ public class CdpDispatcher
     /// <param name="sessionId">SessionID is how we identify where to send the data to</param>
     /// <param name="cancellationToken"></param>
     /// <returns>JsonElement that CDP returns</returns>
-    public async Task<JsonElement> SendCommandAsync(
-        string method, 
-        object? @params = null, 
-        string? sessionId = null, 
+    public async Task<JsonElement> SendCommandAsync(string method, object? @params = null, string? sessionId = null,
         CancellationToken cancellationToken = default)
     {
         var handler = new JsonResponseHandler();
         await SendCommandInternalAsync(method, @params, sessionId, handler, cancellationToken);
         return await handler.Task;
-    }
-
-    public async Task SendCommandInternalAsync(
-        string method, 
-        object? @params, 
-        string? sessionId, 
-        IResponseHandler handler,
-        CancellationToken cancellationToken = default)
-    {
-        var id = Interlocked.Increment(ref _nextId);
-        _pendingRequests[id] = handler;
-
-        await _writeSemaphore.WaitAsync(cancellationToken);
-        try
-        {
-            _writeBuffer.Clear();
-            await using (var writer = new Utf8JsonWriter(_writeBuffer))
-            {
-                writer.WriteStartObject();
-                writer.WriteNumber(IdEncoded, id);
-                writer.WriteString(MethodEncoded, method);
-
-                writer.WritePropertyName(ParamsEncoded);
-                
-                if (@params != null)
-                {
-                    JsonSerializer.Serialize(writer, @params, @params.GetType());
-                }
-                else
-                {
-                    writer.WriteRawValue(EmptyParamsBytes);
-                }
-
-                if (!string.IsNullOrEmpty(sessionId))
-                {
-                    writer.WriteString(SessionIdEncoded, sessionId);
-                }
-
-                writer.WriteEndObject();
-            }
-
-            // Add null terminator
-            var span = _writeBuffer.GetSpan(1);
-            span[0] = 0;
-            _writeBuffer.Advance(1);
-
-            await _writer.WriteAsync(_writeBuffer.WrittenMemory, cancellationToken);
-            await _writer.FlushAsync(cancellationToken);
-        }
-        finally
-        {
-            _writeSemaphore.Release();
-        }
     }
 
     private async Task ReadLoop()
@@ -198,14 +141,8 @@ public class CdpDispatcher
             {
                 var result = await _pipeReader.ReadAsync();
                 var buffer = result.Buffer;
-
-                while (TryReadMessage(ref buffer, out var message))
-                {
-                    ProcessMessage(message);
-                }
-
+                while (TryReadMessage(ref buffer, out var message)) ProcessMessage(message);
                 _pipeReader.AdvanceTo(buffer.Start, buffer.End);
-
                 if (result.IsCompleted) break;
             }
         }
@@ -233,183 +170,138 @@ public class CdpDispatcher
         return true;
     }
 
-    private string? GetCachedString(ref Utf8JsonReader reader)
-    {
-        // For short strings, we can avoid string allocation by checking the cache.
-        // We only do this if it's not a ValueSequence for simplicity.
-        if (reader.HasValueSequence) return reader.GetString();
-
-        foreach (var entry in _stringCache)
-        {
-            if (reader.ValueTextEquals(entry.Key))
-            {
-                return entry.Value;
-            }
-        }
-
-        var s = reader.GetString();
-        if (s is { Length: < 128 }) _stringCache.TryAdd(s, s);
-        return s;
-    }
-    
-
     private void ProcessMessage(ReadOnlySequence<byte> message)
     {
-        // Use Utf8JsonReader for initial pass to avoid JsonDocument overhead if possible
         var reader = new Utf8JsonReader(message);
         int? id = null;
         string? method = null;
-        var hasResult = false;
-        var hasError = false;
 
-        // Quickly find id and method
         while (reader.Read())
         {
-            if (reader.TokenType == JsonTokenType.PropertyName)
+            if (reader.TokenType != JsonTokenType.PropertyName) continue;
+
+            if (reader.ValueTextEquals("id"u8))
             {
-                if (!reader.HasValueSequence)
-                {
-                    ProcessProperty(reader.ValueSpan, ref reader, ref id, ref method, ref hasResult, ref hasError);
-                }
-                else
-                {
-                    // Most CDP property names are short and fit in a small buffer.
-                    // We can use a pooled array for larger ones if needed, but 128 is plenty for CDP.
-                    var rented = ArrayPool<byte>.Shared.Rent((int)reader.ValueSequence.Length);
-                    try
-                    {
-                        reader.ValueSequence.CopyTo(rented);
-                        ProcessProperty(rented.AsSpan(0, (int)reader.ValueSequence.Length), ref reader, ref id, ref method, ref hasResult, ref hasError);
-                    }
-                    finally
-                    {
-                        ArrayPool<byte>.Shared.Return(rented);
-                    }
-                }
+                reader.Read();
+                if (reader.TokenType == JsonTokenType.Number) id = reader.GetInt32();
             }
-            if (id.HasValue && (method != null || hasResult || hasError)) break;
-        }
-
-        if (method != null)
-        {
-            if (_eventHandlers.TryGetValue(method, out var handlers))
+            else if (reader.ValueTextEquals("method"u8))
             {
-                // Only parse params if we actually have handlers
-                // Use Utf8JsonReader to find the params property instead of JsonDocument.Parse
-                var paramsReader = new Utf8JsonReader(message);
-                var foundParams = false;
-                while (paramsReader.Read())
-                {
-                    if (paramsReader.TokenType != JsonTokenType.PropertyName) continue;
-                    bool isParams;
-                    if (!paramsReader.HasValueSequence)
-                    {
-                        isParams = paramsReader.ValueSpan.SequenceEqual(ParamsBytes);
-                    }
-                    else
-                    {
-                        var pRented = ArrayPool<byte>.Shared.Rent((int)paramsReader.ValueSequence.Length);
-                        paramsReader.ValueSequence.CopyTo(pRented);
-                        isParams = pRented.AsSpan(0, (int)paramsReader.ValueSequence.Length).SequenceEqual(ParamsBytes);
-                        ArrayPool<byte>.Shared.Return(pRented);
-                    }
-                    paramsReader.Read();
+                reader.Read();
 
-                    if (isParams)
-                    {
-                        var p = JsonElement.ParseValue(ref paramsReader);
-                        lock (handlers)
-                        {
-                            foreach (var h in handlers)
-                            {
-                                h(p);
-                            }
-                        }
-                        foundParams = true;
-                        break;
-                    }
-                    paramsReader.Skip();
-                }
-
-                if (!foundParams)
-                {
-                    lock (handlers)
-                    {
-                        foreach (var h in handlers)
-                        {
-                            h(default);
-                        }
-                    }
-                }
+                // Check cache WITHOUT allocating string first
+                method = GetCachedStringZeroAlloc(ref reader);
             }
-        }
-
-        if (id.HasValue && _pendingRequests.TryRemove(id.Value, out var handler))
-        {
-            handler.Handle(message);
-        }
-    }
-
-    private void ProcessProperty(ReadOnlySpan<byte> span, ref Utf8JsonReader reader, ref int? id, ref string? method, ref bool hasResult, ref bool hasError)
-    {
-        reader.Read();
-        if (span.SequenceEqual(IdBytes))
-        {
-            if (reader.TokenType == JsonTokenType.Number)
-            {
-                id = reader.GetInt32();
-            }
-            else if (reader.TokenType == JsonTokenType.String)
-            {
-                if (reader.HasValueSequence)
-                {
-                    var idStr = reader.GetString();
-                    if (idStr != null) id = int.Parse(idStr);
-                }
-                else
-                {
-                    if (Utf8Parser.TryParse(reader.ValueSpan, out int val, out _))
-                    {
-                        id = val;
-                    }
-                }
-            }
-        }
-        else if (span.SequenceEqual(MethodBytes))
-        {
-            method = GetCachedString(ref reader);
-        }
-        else if (span.SequenceEqual(ParamsBytes))
-        {
-            // If we have handlers, we'll need to parse this later
-            // but we need to move the reader forward
-            reader.Skip();
-        }
-        else if (span.SequenceEqual(SessionIdBytes))
-        {
-            if (reader.HasValueSequence)
+            else if (reader.ValueTextEquals("sessionId"u8))
             {
                 reader.Skip();
             }
             else
             {
-                // Session IDs are also frequently reused
-                GetCachedString(ref reader);
+                reader.Skip();
             }
         }
-        else if (span.SequenceEqual(ResultBytes))
+
+        if (id.HasValue && _pendingRequests.TryRemove(id.Value, out var handler)) handler.Handle(message);
+
+        if (method == null || !_eventHandlers.TryGetValue(method, out var handlers)) return;
+
+        var eventReader = new Utf8JsonReader(message);
+        JsonElement paramsElement = default;
+
+        // Only parse params if strictly necessary (expensive)
+        while (eventReader.Read())
         {
-            hasResult = true;
-            reader.Skip();
+            if (eventReader.TokenType == JsonTokenType.PropertyName && eventReader.ValueTextEquals("params"u8))
+            {
+                eventReader.Read();
+                paramsElement = JsonElement.ParseValue(ref eventReader);
+                break;
+            }
+
+            if (eventReader.TokenType == JsonTokenType.PropertyName) eventReader.Skip();
         }
-        else if (span.SequenceEqual(ErrorBytes))
+
+        lock (handlers)
         {
-            hasError = true;
-            reader.Skip();
+            foreach (var h in handlers) h(paramsElement);
         }
-        else
+    }
+
+    private string? GetCachedStringZeroAlloc(ref Utf8JsonReader reader)
+    {
+        if (reader.HasValueSequence) return reader.GetString();
+
+        /*
+         * Check fast cache list (Iteration vs Allocation)
+         * Since we typically only have 10-20 event types we listen to, this loop is
+         * cheaper than a string alloc
+         * We can't iterate the ConcurrentDictionary keys without alloc
+         */
+        lock (_fastCacheList)
         {
-            reader.Skip();
+            foreach (var cached in _fastCacheList)
+                if (reader.ValueTextEquals(cached))
+                    return cached;
+        }
+
+        // Fallback (Rare for protocols)
+        return reader.GetString();
+    }
+
+    public interface IResponseHandler
+    {
+        void Handle(ReadOnlySequence<byte> message);
+        void SetException(Exception ex);
+    }
+
+    private class JsonResponseHandler : IResponseHandler
+    {
+        private readonly TaskCompletionSource<JsonElement> _tcs =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task<JsonElement> Task => _tcs.Task;
+
+        public void Handle(ReadOnlySequence<byte> message)
+        {
+            try
+            {
+                // Optimization: Scan for result/error before parsing full document
+                var reader = new Utf8JsonReader(message);
+                while (reader.Read())
+                {
+                    if (reader.TokenType != JsonTokenType.PropertyName) continue;
+
+                    if (reader.ValueTextEquals("result"u8))
+                    {
+                        reader.Read();
+                        using var doc = JsonDocument.ParseValue(ref reader);
+                        _tcs.TrySetResult(doc.RootElement.Clone());
+                        return;
+                    }
+
+                    if (reader.ValueTextEquals("error"u8))
+                    {
+                        reader.Read();
+                        using var doc = JsonDocument.ParseValue(ref reader);
+                        _tcs.TrySetException(new Exception($"CDP Error: {doc.RootElement.GetRawText()}"));
+                        return;
+                    }
+
+                    reader.Skip();
+                }
+
+                _tcs.TrySetResult(default);
+            }
+            catch (Exception ex)
+            {
+                _tcs.TrySetException(ex);
+            }
+        }
+
+        public void SetException(Exception ex)
+        {
+            _tcs.TrySetException(ex);
         }
     }
 }

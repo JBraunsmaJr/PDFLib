@@ -6,12 +6,11 @@ namespace PDFLib;
 
 public class PdfPage
 {
-    public PdfDictionary PageDict { get; }
-    private readonly PdfDocument _doc;
-    private readonly Stream _tempStream;
     private readonly StreamWriter _contentWriter;
-    private readonly PdfDictionary _resources;
+    private readonly PdfDocument _doc;
     private readonly PdfDictionary _fonts;
+    private readonly PdfDictionary _resources;
+    private readonly Stream _tempStream;
     private readonly PdfDictionary _xobjects;
 
     public PdfPage(PdfDocument doc, int pageId, int parentId)
@@ -35,10 +34,12 @@ public class PdfPage
 
         foreach (var i in a4)
             mediaBox.Add(new PdfNumber(i));
-        
+
         PageDict.Add("/MediaBox", mediaBox);
         PageDict.Add("/Resources", _resources);
     }
+
+    public PdfDictionary PageDict { get; }
 
     public void AddFont(string alias, string fontName)
     {
@@ -122,6 +123,7 @@ public class PdfPage
                 var b = Convert.ToInt32(color.Substring(4, 2), 16) / 255.0;
                 return (r, g, b);
             }
+
             if (color.Length == 3)
             {
                 var r = Convert.ToInt32(new string(color[0], 2), 16) / 255.0;
@@ -130,7 +132,7 @@ public class PdfPage
                 return (r, g, b);
             }
         }
-        
+
         // Basic named colors support
         return color.ToLower() switch
         {
@@ -154,7 +156,7 @@ public class PdfPage
     {
         _contentWriter.Flush();
         _tempStream.Seek(0, SeekOrigin.Begin);
-        
+
         var streamDict = new PdfDictionary();
         byte[] finalContent;
 
@@ -165,6 +167,7 @@ public class PdfPage
             {
                 _tempStream.CopyTo(ds);
             }
+
             finalContent = ms.ToArray();
             streamDict.Add("/Filter", new PdfName("/FlateDecode"));
         }
@@ -180,7 +183,7 @@ public class PdfPage
         var streamObj = new PdfStreamObject(streamDict, finalContent);
         var streamId = _doc.RegisterObject(streamObj);
         PageDict.Add("/Contents", new PdfReference(streamId));
-        
+
         _doc.WriteObject(PageDict);
     }
 }

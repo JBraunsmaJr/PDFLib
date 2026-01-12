@@ -8,33 +8,33 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <PackageReference Include="BenchmarkDotNet" Version="0.15.8" />
-      <PackageReference Include="BenchmarkDotNet.Diagnostics.Windows" Version="0.15.8" />
-      <PackageReference Include="DinkToPdf" Version="1.0.8" />
-      <PackageReference Include="libwkhtmltox-64" Version="1.0.0" />
+        <PackageReference Include="BenchmarkDotNet" Version="0.15.8"/>
+        <PackageReference Include="BenchmarkDotNet.Diagnostics.Windows" Version="0.15.8"/>
+        <PackageReference Include="DinkToPdf" Version="1.0.8"/>
+        <PackageReference Include="libwkhtmltox-64" Version="1.0.0"/>
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\PDFLib.Chromium\PDFLib.Chromium.csproj" />
+        <ProjectReference Include="..\PDFLib.Chromium\PDFLib.Chromium.csproj"/>
     </ItemGroup>
 
     <ItemGroup>
-      <None Remove="large-sample.html" />
-      <None Remove="x2-large-sample.html" />
-      <None Remove="x3-large-sample.html" />
-      <AdditionalFiles Include="large-sample.html">
-        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </AdditionalFiles>
-      <AdditionalFiles Include="x2-large-sample.html">
-        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </AdditionalFiles>
-      <AdditionalFiles Include="x3-large-sample.html">
-        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </AdditionalFiles>
-      <None Remove="sample.html" />
-      <AdditionalFiles Include="sample.html">
-        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </AdditionalFiles>
+        <None Remove="large-sample.html"/>
+        <None Remove="x2-large-sample.html"/>
+        <None Remove="x3-large-sample.html"/>
+        <AdditionalFiles Include="large-sample.html">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </AdditionalFiles>
+        <AdditionalFiles Include="x2-large-sample.html">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </AdditionalFiles>
+        <AdditionalFiles Include="x3-large-sample.html">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </AdditionalFiles>
+        <None Remove="sample.html"/>
+        <AdditionalFiles Include="sample.html">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </AdditionalFiles>
     </ItemGroup>
 
 </Project>

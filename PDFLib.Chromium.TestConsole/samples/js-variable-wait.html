@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>JS Variable Wait Test</title>
+</head>
+<body>
+<h1>Waiting for JS Variable...</h1>
+<p id="status">Variable not set yet.</p>
+<script>
+    setTimeout(() => {
+        window.readyToRender = true;
+        document.getElementById('status').innerText = 'Variable is now TRUE!';
+        console.log('readyToRender is now true');
+    }, 3000); // 3 second delay
+</script>
+</body>
+</html>

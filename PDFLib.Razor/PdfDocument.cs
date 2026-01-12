@@ -8,22 +8,36 @@ namespace PDFLib;
 
 public class PdfDocument : IDisposable
 {
-    private int _nextId = 1;
-    private readonly List<PdfObject> _objects = new();
     private readonly PdfDictionary _catalog = new();
-    private readonly PdfDictionary _pages = new();
     private readonly PdfArray _kids = new();
+    private readonly List<PdfObject> _objects = new();
     private readonly Dictionary<int, long> _offsets = new();
+    private readonly PdfDictionary _pages = new();
+    private readonly List<string> _pendingSignatureNames = new();
+    private readonly Dictionary<string, PdfDictionary> _signatureFields = new();
+
+    private readonly Dictionary<string, (X509Certificate2 Cert, PdfSignature Sig, PdfFormXObject? Ap, PdfArray? Rect)>
+        _signatures = new();
+
+    private bool _isStreaming;
+    private int _nextId = 1;
     private Stream? _outputStream;
     private BinaryWriter? _writer;
-    private bool _isStreaming;
 
-    private readonly Dictionary<string, (X509Certificate2 Cert, PdfSignature Sig, PdfFormXObject? Ap, PdfArray? Rect)> _signatures = new();
-    private readonly Dictionary<string, PdfDictionary> _signatureFields = new();
-    private readonly List<string> _pendingSignatureNames = new();
+    public void Dispose()
+    {
+        try
+        {
+            _writer?.Dispose();
+        }
+        catch (ObjectDisposedException)
+        {
+            // Ignore if stream already closed
+        }
+    }
 
     /// <summary>
-    /// Adds a signature to the document. Associates the signature to a unique name <paramref name="name"/>
+    ///     Adds a signature to the document. Associates the signature to a unique name <paramref name="name" />
     /// </summary>
     /// <param name="name">Unique name for signature</param>
     /// <param name="certificate">The certificate itself in which the signature will be created from.</param>
@@ -31,19 +45,18 @@ public class PdfDocument : IDisposable
     /// <param name="y">Y coordinate in which the visual signature should appear</param>
     /// <param name="width">Width of signature block</param>
     /// <param name="height">Height of signature block</param>
-    public void AddSignature(string name, X509Certificate2 certificate, int? x = null, int? y = null, int? width = null, int? height = null)
+    public void AddSignature(string name, X509Certificate2 certificate, int? x = null, int? y = null, int? width = null,
+        int? height = null)
     {
         var sig = new PdfSignature();
         _signatures[name] = (certificate, sig, null, null);
-        
+
         if (x.HasValue && y.HasValue && width.HasValue && height.HasValue)
-        {
             SetSignatureAppearance(name, x.Value, y.Value, width.Value, height.Value);
-        }
     }
-    
+
     /// <summary>
-    /// Render signature associated with <paramref name="name"/> at given coordinates, with given dimensions.
+    ///     Render signature associated with <paramref name="name" /> at given coordinates, with given dimensions.
     /// </summary>
     /// <param name="name">Unique name of signature that's already been registered</param>
     /// <param name="x">X coordinate of signature block</param>
@@ -64,7 +77,7 @@ public class PdfDocument : IDisposable
         // Create appearance
         var signatureAppearance = new PdfFormXObject(width, height);
         signatureAppearance.AddFont("F1", "Helvetica", this);
-        
+
         var certName = data.Cert.GetNameInfo(X509NameType.SimpleName, false) ?? data.Cert.Subject;
         signatureAppearance.DrawText("F1", 10, 2, height - 12, $"Digitally signed by: {certName}");
         signatureAppearance.DrawText("F1", 8, 2, height - 24, $"Date: {DateTime.Now:yyyy.MM.dd HH:mm:ss zzz}");
@@ -89,7 +102,7 @@ public class PdfDocument : IDisposable
     public void Begin(Stream outputStream)
     {
         _outputStream = outputStream;
-        _writer = new BinaryWriter(_outputStream, Encoding.ASCII, leaveOpen: true);
+        _writer = new BinaryWriter(_outputStream, Encoding.ASCII, true);
         _isStreaming = true;
 
         _writer.Write(Encoding.ASCII.GetBytes("%PDF-1.4\n%\u00E2\u00E3\u00E3\u00CF\u00D3\n"));
@@ -105,7 +118,7 @@ public class PdfDocument : IDisposable
         // /Count will be updated at the end
 
         if (_signatures.Count <= 0) return;
-        
+
         var acroForm = new PdfDictionary();
         var fields = new PdfArray();
         acroForm.Add("/Fields", fields);
@@ -140,12 +153,15 @@ public class PdfDocument : IDisposable
         }
     }
 
-    private int AssignId() => _nextId++;
+    private int AssignId()
+    {
+        return _nextId++;
+    }
 
     public PdfPage AddPage()
     {
         if (!_isStreaming) throw new InvalidOperationException("Call Begin() first");
-        
+
         var pagesId = _pages.ObjectId ?? throw new InvalidOperationException("Pages object ID not set");
         var page = new PdfPage(this, AssignId(), pagesId);
         _kids.Add(new PdfReference(page.PageDict.ObjectId!.Value));
@@ -156,14 +172,15 @@ public class PdfDocument : IDisposable
 
     public void AddSignatureToPage(PdfPage page, string signatureName)
     {
-        if (_signatureFields.TryGetValue(signatureName, out var sigField) && _pendingSignatureNames.Contains(signatureName))
+        if (_signatureFields.TryGetValue(signatureName, out var sigField) &&
+            _pendingSignatureNames.Contains(signatureName))
         {
             var data = _signatures[signatureName];
-            
+
             // Register related objects if not yet done
             if (data.Sig.ObjectId == null) RegisterObject(data.Sig);
             if (data.Ap is { ObjectId: null }) RegisterObject(data.Ap);
-            
+
             // Register the field itself
             RegisterObject(sigField);
 
@@ -178,6 +195,7 @@ public class PdfDocument : IDisposable
                 annots = new PdfArray();
                 page.PageDict.Add("/Annots", annots);
             }
+
             annots.Add(sigField);
             _pendingSignatureNames.Remove(signatureName);
         }
@@ -187,13 +205,9 @@ public class PdfDocument : IDisposable
     {
         obj.ObjectId = AssignId();
         if (_isStreaming)
-        {
             WriteObject(obj);
-        }
         else
-        {
             _objects.Add(obj);
-        }
         return obj.ObjectId.Value;
     }
 
@@ -220,7 +234,7 @@ public class PdfDocument : IDisposable
         {
             var data = _signatures[name];
             var sigField = _signatureFields[name];
-            
+
             if (data.Sig.ObjectId == null) RegisterObject(data.Sig);
             if (data.Ap is { ObjectId: null }) RegisterObject(data.Ap);
             RegisterObject(sigField);
@@ -229,7 +243,7 @@ public class PdfDocument : IDisposable
         // Write Catalog and Pages objects if they weren't written yet
         // In this implementation, we write them at the end for simplicity in tracking _kids and _count
         _pages.Add("/Count", new PdfNumber(_kids.Count));
-        
+
         WriteObject(_catalog);
         WriteObject(_pages);
 
@@ -242,11 +256,9 @@ public class PdfDocument : IDisposable
         _writer.Write(Encoding.ASCII.GetBytes("0000000000 65535 f \n"));
 
         for (var i = 1; i <= maxId; i++)
-        {
             _writer.Write(_offsets.TryGetValue(i, out var offset)
                 ? Encoding.ASCII.GetBytes($"{offset:D10} 00000 n \n")
                 : Encoding.ASCII.GetBytes("0000000000 00000 f \n"));
-        }
 
         _writer.Write(Encoding.ASCII.GetBytes("trailer\n"));
         var trailer = new PdfDictionary();
@@ -255,13 +267,10 @@ public class PdfDocument : IDisposable
 
         _writer.Write(trailer.GetBytes());
         _writer.Write(Encoding.ASCII.GetBytes($"\nstartxref\n{xrefStart}\n%%EOF"));
-        
+
         _writer.Flush();
 
-        foreach (var sigData in _signatures.Values)
-        {
-            SignDocument(sigData.Sig, sigData.Cert);
-        }
+        foreach (var sigData in _signatures.Values) SignDocument(sigData.Sig, sigData.Cert);
 
         _isStreaming = false;
     }
@@ -271,16 +280,16 @@ public class PdfDocument : IDisposable
         if (_outputStream == null) return;
 
         var fileLength = _outputStream.Position;
-        
+
         var contentsStart = signature.ContentsOffset;
-        var contentsLength = 4096; 
+        var contentsLength = 4096;
 
         var part1Length = (int)contentsStart;
         var part2Start = (int)(contentsStart + contentsLength);
         var part2Length = (int)(fileLength - part2Start);
 
         var byteRange = $"[0 {part1Length} {part2Start} {part2Length}]";
-        
+
         _outputStream.Seek(signature.ByteRangeOffset, SeekOrigin.Begin);
         var byteRangeBytes = Encoding.ASCII.GetBytes(byteRange.PadRight(64));
         _outputStream.Write(byteRangeBytes, 0, byteRangeBytes.Length);
@@ -289,11 +298,11 @@ public class PdfDocument : IDisposable
         using (var sha = SHA256.Create())
         {
             _outputStream.Seek(0, SeekOrigin.Begin);
-            
+
             var buffer = new byte[8192];
             int read;
             long totalRead = 0;
-            
+
             // Hash Part 1
             while (totalRead < part1Length)
             {
@@ -313,14 +322,14 @@ public class PdfDocument : IDisposable
                 sha.TransformBlock(buffer, 0, read, null, 0);
                 totalRead += read;
             }
-            
+
             sha.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
             hash = sha.Hash!;
         }
 
         // Sign
         var contentInfo = new ContentInfo(hash);
-        var signedCms = new SignedCms(contentInfo, detached: true);
+        var signedCms = new SignedCms(contentInfo, true);
         var cmsSigner = new CmsSigner(certificate)
         {
             DigestAlgorithm = new Oid("2.16.840.1.101.3.4.2.1") // SHA256
@@ -343,26 +352,14 @@ public class PdfDocument : IDisposable
     {
         using var fs = new FileStream(filePath, FileMode.Create);
         Begin(fs);
-        
+
         /*
           For simple usage where Build wasn't called on pages,
           we might still have objects in the _ objects list if RegisterObject was called before Begin
           or in some other scenarios.
           But with the current logic, everything should be written via WriteObject
          */
-        
-        Close();
-    }
 
-    public void Dispose()
-    {
-        try
-        {
-            _writer?.Dispose();
-        }
-        catch (ObjectDisposedException)
-        {
-            // Ignore if stream already closed
-        }
+        Close();
     }
 }

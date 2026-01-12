@@ -4,12 +4,16 @@ public class PdfArray : PdfObject
 {
     private readonly List<PdfObject> _items = new();
 
-    public int Count => _items.Count;
-    public void Add(PdfObject item) => _items.Add(item);
-
     public PdfArray(params PdfObject[] initialItems)
     {
         _items.AddRange(initialItems);
+    }
+
+    public int Count => _items.Count;
+
+    public void Add(PdfObject item)
+    {
+        _items.Add(item);
     }
 
     public override void WriteTo(BinaryWriter writer)
@@ -19,13 +23,9 @@ public class PdfArray : PdfObject
         {
             writer.Write(ToAscii(" "));
             if (item.ObjectId.HasValue && !(item is PdfReference))
-            {
                 writer.Write(ToAscii($"{item.ObjectId} {item.Generation} R"));
-            }
             else
-            {
                 item.WriteTo(writer);
-            }
         }
 
         writer.Write(ToAscii("]"));

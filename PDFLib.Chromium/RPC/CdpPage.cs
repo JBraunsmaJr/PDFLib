@@ -1,7 +1,7 @@
-using System.Text.Json;
-using System.Collections.Concurrent;
 using System.Buffers;
 using System.Buffers.Text;
+using System.Collections.Concurrent;
+using System.Text.Json;
 
 namespace PDFLib.Chromium.RPC;
 
@@ -11,213 +11,17 @@ namespace PDFLib.Chromium.RPC;
 public class CdpPage : IAsyncDisposable
 {
     private readonly CdpDispatcher _dispatcher;
+    private readonly BrowserOptions _options;
+    private readonly SemaphoreSlim _semaphore;
     private readonly string _sessionId;
     private readonly string _targetId;
-    private readonly SemaphoreSlim _semaphore;
-    private readonly BrowserOptions _options;
-    
-    #region Preallocated
-    private static readonly byte[] ResultBytes = "result"u8.ToArray();
-    private static readonly byte[] ValueBytes = "value"u8.ToArray();
-    private static readonly byte[] ErrorBytes = "error"u8.ToArray();
-    private static readonly byte[] EofBytes = "eof"u8.ToArray();
-    private static readonly byte[] Base64EncodedBytes = "base64Encoded"u8.ToArray();
-    private static readonly byte[] DataBytes = "data"u8.ToArray();
-    private static readonly byte[] CompleteBytes = "complete"u8.ToArray();
-    #endregion
-
-    private class IoReadResponseHandler : CdpDispatcher.IResponseHandler
-    {
-        private readonly Stream _destinationStream;
-        private readonly TaskCompletionSource<bool> _tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public Task<bool> Task => _tcs.Task;
-
-        public IoReadResponseHandler(Stream destinationStream)
-        {
-            _destinationStream = destinationStream;
-        }
-
-        public void Handle(ReadOnlySequence<byte> message)
-        {
-            try
-            {
-                var reader = new Utf8JsonReader(message);
-                var eof = false;
-                var base64Encoded = false;
-                var hasError = false;
-                string? errorText = null;
-
-                while (reader.Read())
-                {
-                    if (reader.TokenType != JsonTokenType.PropertyName) continue;
-
-                    byte[]? rentedProp = null;
-                    ReadOnlySpan<byte> propertySpan;
-                    if (!reader.HasValueSequence)
-                    {
-                        propertySpan = reader.ValueSpan;
-                    }
-                    else
-                    {
-                        rentedProp = ArrayPool<byte>.Shared.Rent((int)reader.ValueSequence.Length);
-                        reader.ValueSequence.CopyTo(rentedProp);
-                        propertySpan = rentedProp.AsSpan(0, (int)reader.ValueSequence.Length);
-                    }
-                    reader.Read();
-
-                    try
-                    {
-                        if (propertySpan.SequenceEqual(ErrorBytes))
-                        {
-                            hasError = true;
-                            errorText = reader.TokenType == JsonTokenType.String ? reader.GetString() : "Complex error object";
-                        }
-                        else if (propertySpan.SequenceEqual(ResultBytes))
-                        {
-                            while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
-                            {
-                                if (reader.TokenType != JsonTokenType.PropertyName) continue;
-
-                                byte[]? rentedResultProp = null;
-                                ReadOnlySpan<byte> resultPropSpan;
-                                if (!reader.HasValueSequence)
-                                {
-                                    resultPropSpan = reader.ValueSpan;
-                                }
-                                else
-                                {
-                                    rentedResultProp = ArrayPool<byte>.Shared.Rent((int)reader.ValueSequence.Length);
-                                    reader.ValueSequence.CopyTo(rentedResultProp);
-                                    resultPropSpan = rentedResultProp.AsSpan(0, (int)reader.ValueSequence.Length);
-                                }
-                                reader.Read();
-
-                                try
-                                {
-                                    if (resultPropSpan.SequenceEqual(EofBytes))
-                                    {
-                                        eof = reader.GetBoolean();
-                                    }
-                                    else if (resultPropSpan.SequenceEqual(Base64EncodedBytes))
-                                    {
-                                        base64Encoded = reader.GetBoolean();
-                                    }
-                                    else if (resultPropSpan.SequenceEqual(DataBytes))
-                                    {
-                                        if (base64Encoded)
-                                        {
-                                            // Decode directly from the reader's buffer to avoid string allocation
-                                            var base64Length = reader.HasValueSequence ? (int)reader.ValueSequence.Length : reader.ValueSpan.Length;
-                                            var maxByteCount = (base64Length * 3 + 3) / 4;
-                                            var buffer = ArrayPool<byte>.Shared.Rent(maxByteCount);
-                                            try
-                                            {
-                                                if (reader.HasValueSequence)
-                                                {
-                                                    var seq = reader.ValueSequence;
-                                                    // Use a larger buffer if needed, but avoid double rental if possible
-                                                    // Base64.DecodeFromUtf8 needs a contiguous span
-                                                    var tempBase64 = ArrayPool<byte>.Shared.Rent((int)seq.Length);
-                                                    try
-                                                    {
-                                                        seq.CopyTo(tempBase64);
-                                                        var result = Base64.DecodeFromUtf8(tempBase64.AsSpan(0, (int)seq.Length), buffer, out _, out var written);
-                                                        if (result == OperationStatus.Done)
-                                                        {
-                                                            _destinationStream.Write(buffer, 0, written);
-                                                        }
-                                                        else
-                                                        {
-                                                            // Fallback if buffer too small (shouldn't happen with our maxByteCount)
-                                                            if (reader.TryGetBytesFromBase64(out var bytes))
-                                                            {
-                                                                _destinationStream.Write(bytes);
-                                                            }
-                                                        }
-                                                    }
-                                                    finally
-                                                    {
-                                                        ArrayPool<byte>.Shared.Return(tempBase64);
-                                                    }
-                                                }
-                                                else
-                                                {
-                                                    // reader.ValueSpan is UTF8 bytes of the base64 string
-                                                    // We can use Base64.DecodeFromUtf8
-                                                    var span = reader.ValueSpan;
-                                                    var result = Base64.DecodeFromUtf8(span, buffer, out _, out var written);
-                                                    if (result == OperationStatus.Done)
-                                                    {
-                                                        _destinationStream.Write(buffer, 0, written);
-                                                    }
-                                                    else
-                                                    {
-                                                        // Fallback
-                                                        if (reader.TryGetBytesFromBase64(out var bytes))
-                                                        {
-                                                            _destinationStream.Write(bytes);
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                            finally
-                                            {
-                                                ArrayPool<byte>.Shared.Return(buffer);
-                                            }
-                                        }
-                                        else
-                                        {
-                                            // Non-base64 data (unlikely for PDF chunks)
-                                            if (!reader.HasValueSequence)
-                                            {
-                                                _destinationStream.Write(reader.ValueSpan);
-                                            }
-                                            else
-                                            {
-                                                foreach (var segment in reader.ValueSequence)
-                                                {
-                                                    _destinationStream.Write(segment.Span);
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                                finally
-                                {
-                                    if (rentedResultProp != null) ArrayPool<byte>.Shared.Return(rentedResultProp);
-                                }
-                            }
-                        }
-                    }
-                    finally
-                    {
-                        if (rentedProp != null) ArrayPool<byte>.Shared.Return(rentedProp);
-                    }
-                }
-
-                if (hasError)
-                {
-                    _tcs.TrySetException(new Exception($"CDP Error: {errorText}"));
-                }
-                else
-                {
-                    _tcs.TrySetResult(eof);
-                }
-            }
-            catch (Exception ex)
-            {
-                _tcs.TrySetException(ex);
-            }
-        }
-
-        public void SetException(Exception ex) => _tcs.TrySetException(ex);
-    }
 
     private string? _cachedFrameId;
-    private bool _pageEnabled;
     private bool _networkEnabled;
+    private bool _pageEnabled;
 
-    public CdpPage(CdpDispatcher dispatcher, string sessionId, string targetId, SemaphoreSlim semaphore, BrowserOptions options)
+    public CdpPage(CdpDispatcher dispatcher, string sessionId, string targetId, SemaphoreSlim semaphore,
+        BrowserOptions options)
     {
         _dispatcher = dispatcher;
         _sessionId = sessionId;
@@ -226,14 +30,110 @@ public class CdpPage : IAsyncDisposable
         _semaphore = semaphore;
     }
 
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            await _dispatcher.SendCommandAsync("Target.closeTarget", new { targetId = _targetId });
+        }
+        catch
+        {
+        }
+    }
+
+    /// <summary>
+    /// Combines <see cref="SetContentAsync"/> and <see cref="PrintToPdfAsync(string,System.IO.Stream,System.Threading.CancellationToken)"/>
+    /// </summary>
+    /// <param name="html">HTML to convert into PDF</param>
+    /// <param name="destinationStream">Where to stream PDF</param>
+    /// <param name="cancellationToken"></param>
+    public async Task PrintToPdfAsync(string html, Stream destinationStream,
+        CancellationToken cancellationToken = default)
+    {
+        await SetContentAsync(html);
+        await PrintToPdfAsync(destinationStream, cancellationToken);
+    }
+    
+    /// <summary>
+    /// Assumes the provided HTML content is valid and sets it as the page's content. 
+    /// </summary>
+    /// <param name="destinationStream">Where to stream PDF</param>
+    /// <param name="cancellationToken"></param>
+    /// <exception cref="Exception"></exception>
+    public async Task PrintToPdfAsync(Stream destinationStream, CancellationToken cancellationToken = default)
+    {
+        await _semaphore.WaitAsync(cancellationToken);
+
+        // 1MB buffer handles 256KB chunks comfortably
+        var scratchBuffer = ArrayPool<byte>.Shared.Rent(1024 * 1024);
+
+        try
+        {
+            var result = await _dispatcher.SendCommandAsync("Page.printToPDF", new
+            {
+                printBackground = true,
+                transferMode = "ReturnAsStream",
+                preferCSSPageSize = true
+            }, _sessionId, cancellationToken);
+
+            string? streamHandle = null;
+            if (result.TryGetProperty("streamHandle", out var streamHandleProp))
+                streamHandle = streamHandleProp.GetString();
+            else if (result.TryGetProperty("stream", out var streamProp))
+                streamHandle = streamProp.GetString();
+
+            if (string.IsNullOrEmpty(streamHandle))
+            {
+                if (!result.TryGetProperty("data", out var dataProp)) throw new Exception("No handle or data");
+                if (dataProp.ValueKind == JsonValueKind.String && dataProp.TryGetBytesFromBase64(out var bytes))
+                    await destinationStream.WriteAsync(bytes, cancellationToken);
+                return;
+            }
+
+            try
+            {
+                await CheckMemoryPressure();
+                var eof = false;
+
+                var handler = new IoReadResponseHandler(destinationStream, scratchBuffer);
+
+                while (!eof)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    // Reset the handler's TCS for the new request
+                    handler.Reset();
+
+                    await _dispatcher.SendCommandInternalAsync("IO.read", new
+                    {
+                        handle = streamHandle,
+                        size = 256 * 1024
+                    }, _sessionId, handler, cancellationToken);
+
+                    eof = await handler.Task;
+                }
+
+                await destinationStream.FlushAsync(cancellationToken);
+            }
+            finally
+            {
+                await _dispatcher.SendCommandAsync("IO.close", new { handle = streamHandle }, _sessionId,
+                    CancellationToken.None);
+            }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(scratchBuffer);
+            _semaphore.Release();
+        }
+    }
+
     private async Task CheckMemoryPressure()
     {
         var memoryInfo = GC.GetGCMemoryInfo();
-        var availableRamMb = (memoryInfo.TotalAvailableMemoryBytes - memoryInfo.MemoryLoadBytes) / 1024 / 1024;
-
-        if (availableRamMb < _options.MemoryThresholdMb)
+        if ((memoryInfo.TotalAvailableMemoryBytes - memoryInfo.MemoryLoadBytes) / 1024 / 1024 <
+            _options.MemoryThresholdMb)
         {
-            // Non-blocking GC collect to help out
             GC.Collect(2, GCCollectionMode.Optimized, false);
             await Task.Yield();
         }
@@ -241,6 +141,7 @@ public class CdpPage : IAsyncDisposable
 
     /// <summary>
     /// Sets the content of the page to the provided HTML string.
+    /// Will automatically execute the <see cref="WaitStrategy"/> and wait until the page is ready.
     /// </summary>
     /// <param name="html"></param>
     public async Task SetContentAsync(string html)
@@ -253,8 +154,8 @@ public class CdpPage : IAsyncDisposable
 
         if (_cachedFrameId == null)
         {
-            var frameTree = await _dispatcher.SendCommandAsync("Page.getFrameTree", null, _sessionId);
-            _cachedFrameId = frameTree.GetProperty("frameTree").GetProperty("frame").GetProperty("id").GetString();
+            var ft = await _dispatcher.SendCommandAsync("Page.getFrameTree", null, _sessionId);
+            _cachedFrameId = ft.GetProperty("frameTree").GetProperty("frame").GetProperty("id").GetString();
         }
 
         if (_options.WaitStrategy.HasFlag(WaitStrategy.NetworkIdle) && !_networkEnabled)
@@ -263,14 +164,18 @@ public class CdpPage : IAsyncDisposable
             _networkEnabled = true;
         }
 
-        await _dispatcher.SendCommandAsync("Page.setDocumentContent", new { frameId = _cachedFrameId, html }, _sessionId);
-
-        var startTime = DateTime.UtcNow;
-        var timeout = _options.WaitTimeoutMs.HasValue ? TimeSpan.FromMilliseconds(_options.WaitTimeoutMs.Value) : (TimeSpan?)null;
-
-        await WaitForConditionsAsync(startTime, timeout);
+        await _dispatcher.SendCommandAsync("Page.setDocumentContent", new { frameId = _cachedFrameId, html },
+            _sessionId);
+        await WaitForConditionsAsync(DateTime.UtcNow,
+            _options.WaitTimeoutMs.HasValue ? TimeSpan.FromMilliseconds(_options.WaitTimeoutMs.Value) : null);
     }
-
+    
+    /// <summary>
+    /// Attempts to retrieve the requestID from <paramref name="p"/>
+    /// </summary>
+    /// <param name="p"></param>
+    /// <param name="id"></param>
+    /// <returns></returns>
     private bool TryGetRequestId(JsonElement p, out string id)
     {
         if (p.TryGetProperty("requestId", out var idProp))
@@ -281,7 +186,7 @@ public class CdpPage : IAsyncDisposable
         id = null!;
         return false;
     }
-
+    
     private async Task WaitForConditionsAsync(DateTime startTime, TimeSpan? timeout)
     {
         if (_options.WaitStrategy == 0) return;
@@ -320,9 +225,9 @@ public class CdpPage : IAsyncDisposable
                 if (_options.WaitStrategy.HasFlag(WaitStrategy.Load))
                 {
                     var readyStateRes = await _dispatcher.SendCommandAsync("Runtime.evaluate", new { expression = "document.readyState" }, _sessionId);
-                    if (readyStateRes.TryGetProperty(ResultBytes, out var result) && result.TryGetProperty(ValueBytes, out var value))
+                    if (readyStateRes.TryGetProperty("result"u8, out var result) && result.TryGetProperty("value"u8, out var value))
                     {
-                        if (value.ValueEquals(CompleteBytes)) return;
+                        if (value.ValueEquals("complete"u8)) return;
                     }
                 }
 
@@ -346,7 +251,7 @@ public class CdpPage : IAsyncDisposable
                 if (_options.WaitStrategy.HasFlag(WaitStrategy.JavascriptVariable) && !string.IsNullOrEmpty(_options.WaitVariable))
                 {
                     var res = await _dispatcher.SendCommandAsync("Runtime.evaluate", new { expression = _options.WaitVariable }, _sessionId);
-                    if (res.TryGetProperty(ResultBytes, out var result) && result.TryGetProperty(ValueBytes, out var value))
+                    if (res.TryGetProperty("result"u8, out var result) && result.TryGetProperty("value"u8, out var value))
                     {
                         var match = value.ValueKind switch
                         {
@@ -374,95 +279,158 @@ public class CdpPage : IAsyncDisposable
         }
     }
 
-    public async Task PrintToPdfAsync(string html, Stream destinationStream, CancellationToken cancellationToken = default)
+    /// <summary>
+    ///     Reusable Handler
+    /// </summary>
+    /// <remarks>
+    ///     Implementing IValueTaskSource could be better, but more complex
+    ///     Using a reusable TCS logic via a simple Reset method is safer for now
+    /// </remarks>
+    private class IoReadResponseHandler : CdpDispatcher.IResponseHandler
     {
-        await SetContentAsync(html);
-        await PrintToPdfAsync(destinationStream, cancellationToken);
-    }
+        private readonly Stream _destinationStream;
+        private readonly byte[] _scratchBuffer;
 
-    public async Task PrintToPdfAsync(Stream destinationStream, CancellationToken cancellationToken = default)
-    {
-        await _semaphore.WaitAsync(cancellationToken);
-        
-        // ReturnAsStream ensures we don't crash on 150+ page documents
-        var result = await _dispatcher.SendCommandAsync("Page.printToPDF", new 
-        { 
-            printBackground = true, 
-            transferMode = "ReturnAsStream",
-            preferCSSPageSize = true
-        }, _sessionId, cancellationToken);
+        /// <remarks>
+        ///     We reuse this TCS. Once a chunk is done, we await it, then create a new one for the next chunk.
+        ///     (Reusing the actual TCS object is not thread-safe or recommended, swapping the reference is cheap).
+        /// </remarks>
+        private TaskCompletionSource<bool> _tcs;
 
-        string? streamHandle = null;
-        if (result.TryGetProperty("streamHandle", out var streamHandleProp))
+        public IoReadResponseHandler(Stream destinationStream, byte[] scratchBuffer)
         {
-            streamHandle = streamHandleProp.GetString();
-        }
-        else if (result.TryGetProperty("stream", out var streamProp))
-        {
-            streamHandle = streamProp.GetString();
+            _destinationStream = destinationStream;
+            _scratchBuffer = scratchBuffer;
+            _tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         }
 
-        if (string.IsNullOrEmpty(streamHandle))
+        public Task<bool> Task => _tcs.Task;
+
+        public void Handle(ReadOnlySequence<byte> message)
         {
-            // If ReturnAsStream failed or was ignored, the PDF might be in 'data'
-            if (!result.TryGetProperty("data", out var dataProp))
+            try
             {
-                var raw = result.ValueKind != JsonValueKind.Undefined ? result.GetRawText() : "undefined";
-                throw new Exception($"CDP Error: Page.printToPDF did not return stream handle or data. Response: {raw}");
-            }
-            
-            if (dataProp.ValueKind == JsonValueKind.String)
-            {
-                if (dataProp.TryGetBytesFromBase64(out var bytes))
+                var reader = new Utf8JsonReader(message);
+                var eof = false;
+                var base64Encoded = false;
+                var hasError = false;
+                string? errorText = null;
+
+                while (reader.Read())
                 {
-                    await destinationStream.WriteAsync(bytes, cancellationToken);
-                    await destinationStream.FlushAsync(cancellationToken);
+                    if (reader.TokenType != JsonTokenType.PropertyName) continue;
+
+                    if (reader.ValueTextEquals("result"u8))
+                    {
+                        reader.Read();
+                        while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
+                        {
+                            if (reader.TokenType != JsonTokenType.PropertyName) continue;
+
+                            if (reader.ValueTextEquals("data"u8))
+                            {
+                                reader.Read();
+                                ProcessData(ref reader, base64Encoded);
+                            }
+                            else if (reader.ValueTextEquals("eof"u8))
+                            {
+                                reader.Read();
+                                eof = reader.GetBoolean();
+                            }
+                            else if (reader.ValueTextEquals("base64Encoded"u8))
+                            {
+                                reader.Read();
+                                base64Encoded = reader.GetBoolean();
+                            }
+                            else
+                            {
+                                reader.Skip();
+                            }
+                        }
+                    }
+                    else if (reader.ValueTextEquals("error"u8))
+                    {
+                        reader.Read();
+                        hasError = true;
+                        errorText = reader.GetString();
+                    }
+                    else
+                    {
+                        reader.Skip();
+                    }
                 }
+
+                if (hasError)
+                    _tcs.TrySetException(new Exception($"CDP Error: {errorText}"));
+                else
+                    _tcs.TrySetResult(eof);
             }
-            _semaphore.Release();
-            return;
-        }
-
-        try
-        {
-            await CheckMemoryPressure();
-            
-            var eof = false;
-
-            // Stream chunks from Chromium (1MB at a time)
-            while (!eof)
+            catch (Exception ex)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-
-                var handler = new IoReadResponseHandler(destinationStream);
-                await _dispatcher.SendCommandInternalAsync("IO.read", new
-                {
-                    handle = streamHandle,
-                    size = 1024 * 1024
-                }, _sessionId, handler, cancellationToken);
-
-                eof = await handler.Task;
+                _tcs.TrySetException(ex);
             }
-            await destinationStream.FlushAsync(cancellationToken);
         }
-        catch (OperationCanceledException)
-        {
-            // TODO: Add some form of logging
-            throw;
-        }
-        finally
-        {
-            // Cleanup handle
-            // Using CancellationToken.None due to potential invalid/expired token.
-            await _dispatcher.SendCommandAsync("IO.close", new { handle = streamHandle }, _sessionId, CancellationToken.None);
-            _semaphore.Release();
-        }
-    }
 
-    public async ValueTask DisposeAsync()
-    {
-        try {
-            await _dispatcher.SendCommandAsync("Target.closeTarget", new { targetId = _targetId });
-        } catch { /* Ignore if browser already closed */ }
+        public void SetException(Exception ex)
+        {
+            _tcs.TrySetException(ex);
+        }
+        
+        /// <summary>
+        /// Prepares the handler for the next chunk of data.
+        /// </summary>
+        public void Reset()
+        {
+            if (_tcs.Task.IsCompleted)
+                _tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+
+        private void ProcessData(ref Utf8JsonReader reader, bool isBase64)
+        {
+            if (isBase64)
+            {
+                var payloadLength =
+                    reader.HasValueSequence ? (int)reader.ValueSequence.Length : reader.ValueSpan.Length;
+                var halfBuffer = _scratchBuffer.Length / 2;
+
+                if (payloadLength > halfBuffer)
+                {
+                    // Fallback should strictly never happen with 256KB chunks vs 1MB buffer
+                    var input = ArrayPool<byte>.Shared.Rent(payloadLength);
+                    try
+                    {
+                        if (reader.HasValueSequence) reader.ValueSequence.CopyTo(input);
+                        else reader.ValueSpan.CopyTo(input);
+                        if (reader.TryGetBytesFromBase64(out var bytes)) _destinationStream.Write(bytes);
+                    }
+                    finally
+                    {
+                        ArrayPool<byte>.Shared.Return(input);
+                    }
+
+                    return;
+                }
+
+                var inputSpan = _scratchBuffer.AsSpan(0, payloadLength);
+                if (reader.HasValueSequence) reader.ValueSequence.CopyTo(inputSpan);
+                else reader.ValueSpan.CopyTo(inputSpan);
+
+                var outputSpan = _scratchBuffer.AsSpan(halfBuffer);
+                var status = Base64.DecodeFromUtf8(inputSpan, outputSpan, out _, out var written);
+
+                if (status == OperationStatus.Done)
+                    _destinationStream.Write(_scratchBuffer, halfBuffer, written);
+                else if (reader.TryGetBytesFromBase64(out var bytes))
+                    _destinationStream.Write(bytes);
+            }
+            else
+            {
+                if (reader.HasValueSequence)
+                    foreach (var segment in reader.ValueSequence)
+                        _destinationStream.Write(segment.Span);
+                else
+                    _destinationStream.Write(reader.ValueSpan);
+            }
+        }
     }
 }

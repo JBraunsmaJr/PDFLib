@@ -18,10 +18,7 @@ public class Signature : ComponentBase
         builder.AddAttribute(2, "y", Y);
         builder.AddAttribute(3, "width", Width);
         builder.AddAttribute(4, "height", Height);
-        if (!string.IsNullOrEmpty(Name))
-        {
-            builder.AddAttribute(5, "name", Name);
-        }
+        if (!string.IsNullOrEmpty(Name)) builder.AddAttribute(5, "name", Name);
         builder.CloseElement();
     }
 }

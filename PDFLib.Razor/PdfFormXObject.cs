@@ -5,10 +5,10 @@ namespace PDFLib;
 
 public class PdfFormXObject : PdfStreamObject
 {
-    private readonly MemoryStream _tempStream;
     private readonly StreamWriter _contentWriter;
-    private readonly PdfDictionary _resources;
     private readonly PdfDictionary _fonts;
+    private readonly PdfDictionary _resources;
+    private readonly MemoryStream _tempStream;
 
     public PdfFormXObject(int width, int height) : base(new PdfDictionary(), Array.Empty<byte>())
     {
@@ -20,7 +20,7 @@ public class PdfFormXObject : PdfStreamObject
 
         _dict.Add("/Type", new PdfName("/XObject"));
         _dict.Add("/Subtype", new PdfName("/Form"));
-        
+
         var bbox = new PdfArray(
             new PdfNumber(0),
             new PdfNumber(0),

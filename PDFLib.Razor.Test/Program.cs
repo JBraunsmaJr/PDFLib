@@ -40,7 +40,8 @@ var parameters = new Dictionary<string, object?>
 using var doc = new PdfDocument();
 doc.AddSignature("PrimarySignature", cert); // Register certificate with name matching Razor
 
-await using var fs = new FileStream(Path.Join(AppDomain.CurrentDomain.BaseDirectory, "razor-test.pdf"), FileMode.Create);
+await using var fs =
+    new FileStream(Path.Join(AppDomain.CurrentDomain.BaseDirectory, "razor-test.pdf"), FileMode.Create);
 doc.Begin(fs);
 
 var renderer = new PdfRenderer();

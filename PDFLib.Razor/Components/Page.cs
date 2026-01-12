@@ -16,14 +16,14 @@ public class Page : ComponentBase
     {
         builder.OpenElement(0, "page");
         builder.AddAttribute(1, "padding", Padding);
-        
+
         if (FirstPageHeader != null)
         {
             builder.OpenElement(2, "first-page-header");
             builder.AddContent(3, FirstPageHeader);
             builder.CloseElement();
         }
-        
+
         if (Header != null)
         {
             builder.OpenElement(4, "header");

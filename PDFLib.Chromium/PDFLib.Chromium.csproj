@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <OutputType>Exe</OutputType>
+        <OutputType>Library</OutputType>
         <TargetFramework>net10.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
@@ -9,31 +9,9 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <Content Include="..\.dockerignore">
-        <Link>.dockerignore</Link>
-      </Content>
-    </ItemGroup>
-
-    <ItemGroup>
-      <AdditionalFiles Include="samples\sample.html">
-        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </AdditionalFiles>
-      <AdditionalFiles Include="samples\x3-large-sample.html">
-        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </AdditionalFiles>
-      <None Remove="sample.html" />
-      <None Remove="samples\js-variable-wait.html" />
-      <AdditionalFiles Include="samples\js-variable-wait.html">
-        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </AdditionalFiles>
-      <None Remove="samples\network-wait.html" />
-      <AdditionalFiles Include="samples\network-wait.html">
-        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </AdditionalFiles>
-    </ItemGroup>
-
-    <ItemGroup>
-      <Folder Include="test-out\" />
+        <None Remove="sample.html"/>
+        <None Remove="samples\js-variable-wait.html"/>
+        <None Remove="samples\network-wait.html"/>
     </ItemGroup>
 
 </Project>

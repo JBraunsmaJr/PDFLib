@@ -12,7 +12,7 @@ public class Document : ComponentBase
     protected override void BuildRenderTree(RenderTreeBuilder builder)
     {
         builder.OpenElement(0, "document");
-        
+
         if (Header != null)
         {
             builder.OpenElement(1, "header");

@@ -2,17 +2,16 @@ using DinkToPdf;
 
 namespace Benchmarks;
 
-
 public class DinkPdf : IConverter
 {
     private readonly BasicConverter _converter;
     private HtmlToPdfDocument? _doc;
-    
+
     public DinkPdf()
     {
         _converter = new BasicConverter(new PdfTools());
     }
-    
+
     public Task ConvertAsync(string html)
     {
         var doc = new HtmlToPdfDocument

@@ -3,7 +3,7 @@
 namespace PDFLib.Models;
 
 /// <summary>
-/// Base abstract class for all PDF Types
+///     Base abstract class for all PDF Types
 /// </summary>
 /// <remarks>
 ///     If the object is "Indirect", it gets an ID and Gen number (e.g., "1 0 obj")
@@ -19,6 +19,9 @@ public abstract class PdfObject
     {
         writer.Write(GetBytes());
     }
-    
-    protected byte[] ToAscii(string text) => Encoding.ASCII.GetBytes(text);
+
+    protected byte[] ToAscii(string text)
+    {
+        return Encoding.ASCII.GetBytes(text);
+    }
 }

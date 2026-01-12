@@ -4,11 +4,20 @@ public class PdfDictionary : PdfObject
 {
     private readonly Dictionary<string, PdfObject> _dict = new();
 
-    public void Add(string key, PdfObject value) => _dict[key] = value;
+    public void Add(string key, PdfObject value)
+    {
+        _dict[key] = value;
+    }
 
-    public PdfObject Get(string key) => _dict[key];
+    public PdfObject Get(string key)
+    {
+        return _dict[key];
+    }
 
-    public PdfObject? GetOptional(string key) => _dict.TryGetValue(key, out var val) ? val : null;
+    public PdfObject? GetOptional(string key)
+    {
+        return _dict.TryGetValue(key, out var val) ? val : null;
+    }
 
     public override void WriteTo(BinaryWriter writer)
     {

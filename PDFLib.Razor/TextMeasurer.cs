@@ -29,10 +29,7 @@ public static class TextMeasurer
             }
         }
 
-        if (!string.IsNullOrEmpty(currentLine))
-        {
-            lines.Add(currentLine);
-        }
+        if (!string.IsNullOrEmpty(currentLine)) lines.Add(currentLine);
 
         return lines;
     }

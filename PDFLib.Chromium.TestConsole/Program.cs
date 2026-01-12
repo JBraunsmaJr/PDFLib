@@ -1,8 +1,8 @@
 ﻿using System.Diagnostics;
 using PDFLib.Chromium;
 
-const string OUTPUT_DIRECTORY = "/out";
-if (!Directory.Exists(OUTPUT_DIRECTORY)) Directory.CreateDirectory(OUTPUT_DIRECTORY);
+const string outputDirectory = "./out";
+if (!Directory.Exists(outputDirectory)) Directory.CreateDirectory(outputDirectory);
 
 await RunStandardSamples();
 await RunWaitStrategySamples();
@@ -27,7 +27,7 @@ async Task RunStandardSamples()
 async Task RunWaitStrategySamples()
 {
     Console.WriteLine("\n--- Running Wait Strategy Samples ---");
-    
+
     // Test JS Variable Wait
     {
         using var browser = new ChromiumBrowser();
@@ -39,7 +39,7 @@ async Task RunWaitStrategySamples()
             WaitTimeoutMs = 15000
         };
         await browser.StartAsync(options);
-        
+
         var file = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "samples", "js-variable-wait.html");
         var html = await File.ReadAllTextAsync(file);
         Console.WriteLine("Processing js-variable-wait.html (Strategy: JavascriptVariable)");
@@ -55,7 +55,7 @@ async Task RunWaitStrategySamples()
             WaitTimeoutMs = 15000
         };
         await browser.StartAsync(options);
-        
+
         var file = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "samples", "network-wait.html");
         var html = await File.ReadAllTextAsync(file);
         Console.WriteLine("Processing network-wait.html (Strategy: NetworkIdle)");
@@ -66,20 +66,20 @@ async Task RunWaitStrategySamples()
 async Task RenderToPdf(ChromiumBrowser browser, string file, string html)
 {
     var info = new FileInfo(file);
-    var fullPath = Path.Combine(OUTPUT_DIRECTORY, info.Name.Replace(".html", ".pdf"));
+    var fullPath = Path.Combine(outputDirectory, info.Name.Replace(".html", ".pdf"));
     if (File.Exists(fullPath))
         File.Delete(fullPath);
-        
+
     var stopwatch = new Stopwatch();
     stopwatch.Start();
-    
+
     await using var outputPdf = File.Create(fullPath);
     await using var page = await browser.CreatePageAsync();
-    await page.PrintToPdfAsync(html, outputPdf);
+    await page.SetContentAsync(html);
+    await page.PrintToPdfAsync(outputPdf);
     await outputPdf.FlushAsync();
-    
+
     stopwatch.Stop();
     var fileInfo = new FileInfo(fullPath);
     Console.WriteLine($"Output: {fullPath} | Size: {fileInfo.Length} bytes | Time: {stopwatch.ElapsedMilliseconds}ms");
 }
-

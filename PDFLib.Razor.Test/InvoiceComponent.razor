@@ -6,7 +6,8 @@
         @*Horizontal column. The width of the row is split equally between each "child". 2 items here = 50% width each*@
         <Row BackgroundColor="#eeeeee" Padding="5">
             <Image Source="@LogoPath" Width="40"/>
-            <Text FontSize="10" Align="HorizontalAlignment.Right" Color="blue">Confidential Document - Invoice #@InvoiceId</Text>
+            <Text FontSize="10" Align="HorizontalAlignment.Right" Color="blue">Confidential Document - Invoice
+                #@InvoiceId</Text>
         </Row>
     </Header>
     <Footer>
@@ -16,7 +17,7 @@
             <PageNumber Align="HorizontalAlignment.Right" Format="Page {page} of {count}"/>
         </Stack>
     </Footer>
-    
+
     @*The actual content of our document*@
     <ChildContent>
         <Page Padding="40">
@@ -52,7 +53,7 @@
                     </Table>
 
                     <Text Color="gray">Please find the detailed breakdown on the next pages.</Text>
-                    
+
                     <Text FontSize="14">Key Deliverables:</Text>
                     <List Type="ListType.Bullet">
                         <ListItem>PDF Generation Engine</ListItem>
@@ -67,7 +68,7 @@
                         <ListItem>Confirm transaction.</ListItem>
                     </List>
                     <Text>Authorized Signature:</Text>
-                    
+
                     @*This is the visual representation of a "signature". 
                     This example requires a corresponding X509 certificate to be associated to the name PrimarySignature*@
                     <Signature X="40" Y="200" Width="250" Height="80" Name="PrimarySignature"/>
@@ -82,11 +83,19 @@
                     @*You can either explicitly define a Text node within a list, or just normal text. Either is acceptable.*@
                     <List Type="ListType.Numbered">
                         <ListItem>All payments should be made in USD.</ListItem>
-                        <ListItem><Text>Late payments are subject to a 5% interest fee per month.</Text></ListItem>
-                        <ListItem><Text>Refund policy: No refunds for consulting services once provided.</Text></ListItem>
-                        <ListItem><Text>This page uses the global header and footer defined in the Document node.</Text></ListItem>
+                        <ListItem>
+                            <Text>Late payments are subject to a 5% interest fee per month.</Text>
+                        </ListItem>
+                        <ListItem>
+                            <Text>Refund policy: No refunds for consulting services once provided.</Text>
+                        </ListItem>
+                        <ListItem>
+                            <Text>This page uses the global header and footer defined in the Document node.</Text>
+                        </ListItem>
                     </List>
-                    <Text BackgroundColor="yellow">Important: Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.</Text>
+                    <Text BackgroundColor="yellow">Important: Lorem ipsum dolor sit amet, consectetur adipiscing elit.
+                        Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
+                    </Text>
                 </Stack>
             </ChildContent>
         </Page>
@@ -105,4 +114,5 @@
         public string Name { get; set; } = "";
         public decimal Price { get; set; }
     }
+
 }
