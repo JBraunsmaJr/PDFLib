@@ -56,12 +56,6 @@ public class PdfSigner
     /// <exception cref="Exception">Thrown if the PDF structure is invalid or signing fails.</exception>
     public async Task<byte[]> SignAsync()
     {
-        if (_zones.Count == 0) return _pdfBytes;
-
-        var certToUse = _defaultCertificate;
-        if (certToUse == null && _certificates.Count == 0)
-            throw new InvalidOperationException("No certificates provided for signing.");
-
         var lastStartXref = FindLastStartXref();
         if (lastStartXref == -1) throw new Exception("Could not find startxref");
 
@@ -91,12 +85,20 @@ public class PdfSigner
         {
             var (x, y, w, h, pageNum) = zone.ToPdfCoordinates();
             
-            var sigDict = new PdfSignature(4096)
+            // Check if we have a certificate for this zone
+            var hasCert = _certificates.ContainsKey(zone.Id) || _defaultCertificate != null;
+
+            PdfReference? sigDictRef = null;
+            if (hasCert)
             {
-                ObjectId = _nextId++
-            };
-            _newObjects.Add(sigDict);
-            sigDictToZoneId[sigDict.ObjectId.Value] = zone.Id;
+                var sigDict = new PdfSignature(4096)
+                {
+                    ObjectId = _nextId++
+                };
+                _newObjects.Add(sigDict);
+                sigDictToZoneId[sigDict.ObjectId.Value] = zone.Id;
+                sigDictRef = new PdfReference(sigDict.ObjectId.Value);
+            }
 
             var sigField = new PdfDictionary();
             sigField.ObjectId = _nextId++;
@@ -108,9 +110,29 @@ public class PdfSigner
             var targetPageRef = FindPageRef(rootRef, pageNum) ?? firstPageRef;
             if (targetPageRef != null) sigField.Add("/P", targetPageRef);
             
-            sigField.Add("/V", new PdfReference(sigDict.ObjectId.Value));
+            if (sigDictRef != null)
+            {
+                sigField.Add("/V", sigDictRef);
+            }
+
             sigField.Add("/T", new PdfString(zone.Id));
             sigField.Add("/F", new PdfNumber(4)); // Print flag
+
+            if (hasCert)
+            {
+                // Create appearance stream for visualization
+                var cert = _certificates.TryGetValue(zone.Id, out var c) ? c : _defaultCertificate;
+                if (cert != null)
+                {
+                    var appearance = CreateAppearance(w, h, cert);
+                    appearance.ObjectId = _nextId++;
+                    _newObjects.Add(appearance);
+                    
+                    var apDict = new PdfDictionary();
+                    apDict.Add("/N", new PdfReference(appearance.ObjectId.Value));
+                    sigField.Add("/AP", apDict);
+                }
+            }
             
             _newObjects.Add(sigField);
             sigFields.Add(new PdfReference(sigField.ObjectId.Value));
@@ -175,13 +197,13 @@ public class PdfSigner
                     var val = match.Groups[2].Value.Trim();
                     if (key == "/Annots")
                     {
-                         // We'll handle /Annots separately
-                         var refMatches = System.Text.RegularExpressions.Regex.Matches(val, @"(\d+)\s+\d+\s+R");
-                         foreach (System.Text.RegularExpressions.Match m in refMatches)
-                         {
-                             annots.Add(new PdfReference(int.Parse(m.Groups[1].Value)));
-                         }
-                         continue;
+                        // We'll handle /Annots separately
+                        var refMatches = System.Text.RegularExpressions.Regex.Matches(val, @"(\d+)\s+\d+\s+R");
+                        foreach (System.Text.RegularExpressions.Match m in refMatches)
+                        {
+                            annots.Add(new PdfReference(int.Parse(m.Groups[1].Value)));
+                        }
+                        continue;
                     }
                     
                     // If it's a simple reference, use PdfReference
@@ -202,7 +224,7 @@ public class PdfSigner
                     // Find the signature field associated with this zone ID
                     var sigField = _newObjects.OfType<PdfDictionary>()
                         .FirstOrDefault(o => o.GetOptional("/Subtype") is PdfName { Name: "/Widget" } && 
-                                           o.GetOptional("/T") is PdfString s && Encoding.ASCII.GetString(s.GetBytes()).Contains(zone.Id));
+                                           o.GetOptional("/T") is PdfString s && s.GetBytes().Length > 0 && Encoding.ASCII.GetString(s.GetBytes()).Contains(zone.Id));
                     
                     if (sigField != null)
                     {
@@ -525,5 +547,40 @@ public class PdfSigner
         }
         
         return maxId;
+    }
+
+    private PdfStreamObject CreateAppearance(double w, double h, X509Certificate2 cert)
+    {
+        var dict = new PdfDictionary();
+        dict.Add("/Type", new PdfName("/XObject"));
+        dict.Add("/Subtype", new PdfName("/Form"));
+        dict.Add("/BBox", new PdfArray(new PdfNumber(0), new PdfNumber(0), new PdfNumber(w), new PdfNumber(h)));
+        dict.Add("/Resources", new PdfDictionary()); // Empty resources
+
+        var commonName = cert.SubjectName.Name.Split(',')
+            .FirstOrDefault(s => s.Trim().StartsWith("CN=", StringComparison.OrdinalIgnoreCase))
+            ?.Replace("CN=", "", StringComparison.OrdinalIgnoreCase).Trim() ?? cert.Subject;
+
+        var text = $"Digitally signed by {commonName}\nDate: {DateTime.Now:yyyy.MM.dd HH:mm:ss zzz}";
+        
+        // Simple PDF content stream to draw text
+        // Note: This uses standard fonts (Helvetica) which usually don't need explicit resource entries in some viewers
+        // but for better compatibility we'd need a /Font entry. 
+        // For a "no external lib" implementation, we'll keep it minimal.
+        // We use ( ) for text which needs to be escaped. PdfString does it, but here we are in a content stream.
+        var escapedText = text.Replace("\\", "\\\\").Replace("(", "\\(").Replace(")", "\\)");
+        var content = $"q 0 0 {w:F2} {h:F2} re W n BT /Helvetica 8 Tf 2 10 Td ({escapedText}) Tj ET Q";
+        
+        // If we want to be more robust, we should define the font.
+        var resources = (PdfDictionary)dict.Get("/Resources");
+        var fontDict = new PdfDictionary();
+        var helv = new PdfDictionary();
+        helv.Add("/Type", new PdfName("/Font"));
+        helv.Add("/Subtype", new PdfName("/Type1"));
+        helv.Add("/BaseFont", new PdfName("/Helvetica"));
+        fontDict.Add("/Helvetica", helv);
+        resources.Add("/Font", fontDict);
+
+        return new PdfStreamObject(dict, content);
     }
 }
