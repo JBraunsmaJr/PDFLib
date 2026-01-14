@@ -42,34 +42,36 @@ async Task RunSignatureSamples()
 
     if (zones.Count > 0)
     {
-        Console.WriteLine("Signing PDF with multiple certificates...");
+        Console.WriteLine("Signing PDF with selective certificates...");
         var signer = new PdfSigner(pdfBytes, zones);
         
         // Create test certificates
         using var rsa1 = RSA.Create(2048);
-        var request1 = new CertificateRequest("cn=Test1", rsa1, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        var request1 = new CertificateRequest("cn=Test Signer 1", rsa1, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
         using var cert1 = request1.CreateSelfSigned(DateTimeOffset.Now, DateTimeOffset.Now.AddYears(1));
 
         using var rsa2 = RSA.Create(2048);
-        var request2 = new CertificateRequest("cn=Test2", rsa2, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        var request2 = new CertificateRequest("cn=Test Signer 2", rsa2, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
         using var cert2 = request2.CreateSelfSigned(DateTimeOffset.Now, DateTimeOffset.Now.AddYears(1));
 
-        // Assign cert1 to the first zone, and cert2 to the rest (if any)
+        // Assign cert1 to the first zone
         if (zones.Count > 0)
         {
             signer.AddCertificate(cert1, zones[0].Id);
             Console.WriteLine($"  - Assigned cert1 to {zones[0].Id}");
         }
 
+        // Assign cert2 to the second zone (if it exists)
         if (zones.Count > 1)
         {
             signer.AddCertificate(cert2, zones[1].Id);
             Console.WriteLine($"  - Assigned cert2 to {zones[1].Id}");
         }
-        else
+
+        // The remaining zones (if any) will stay unsigned
+        if (zones.Count > 2)
         {
-             // If only one zone, we can test the default fallback too, but let's just use AddCertificate for now.
-             // To test fallback: signer.AddCertificate(cert2); // with no ID
+            Console.WriteLine($"  - Remaining {zones.Count - 2} zones will stay UNSIGNED");
         }
         
         pdfBytes = await signer.SignAsync();
