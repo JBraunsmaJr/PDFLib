@@ -119,17 +119,27 @@ public class PdfSigner
         // In an incremental update, we should provide the updated Root object
         var updatedRoot = new PdfDictionary();
         updatedRoot.ObjectId = rootRef.Id;
-        updatedRoot.Add("/Type", new PdfName("/Catalog"));
-        updatedRoot.Add("/AcroForm", new PdfReference(acroForm.ObjectId.Value));
         
-        // Try to preserve /Pages from original root
+        // Try to preserve all keys from original root
         var rootText = GetObjectText(rootRef.Id);
-        var pagesMatch = System.Text.RegularExpressions.Regex.Match(rootText, @"/Pages\s+(\d+)\s+\d+\s+R");
-        if (pagesMatch.Success)
+        
+        // Find all keys in the dictionary: /Key value
+        var keyMatches = System.Text.RegularExpressions.Regex.Matches(rootText, @"(/[^/ \(\)\[\]<>]+)\s+([^\n\r/<>\[\]]+|\[[^\]]*\]|<<[^>]*>>)");
+        foreach (System.Text.RegularExpressions.Match match in keyMatches)
         {
-            updatedRoot.Add("/Pages", new PdfReference(int.Parse(pagesMatch.Groups[1].Value)));
+            var key = match.Groups[1].Value;
+            var val = match.Groups[2].Value.Trim();
+            if (key == "/AcroForm") continue; // We'll add our own
+            
+            // If it's a simple reference, use PdfReference
+            var refMatch = System.Text.RegularExpressions.Regex.Match(val, @"^(\d+)\s+\d+\s+R$");
+            if (refMatch.Success)
+                updatedRoot.Add(key, new PdfReference(int.Parse(refMatch.Groups[1].Value)));
+            else
+                updatedRoot.Add(key, new PdfRawObject(val));
         }
-
+        
+        updatedRoot.Add("/AcroForm", new PdfReference(acroForm.ObjectId.Value));
         _newObjects.Add(updatedRoot);
         
         // Update Pages to include the new Annotations
@@ -145,21 +155,35 @@ public class PdfSigner
             {
                 var updatedPage = new PdfDictionary();
                 updatedPage.ObjectId = pageRefForThisPage.Id;
-                updatedPage.Add("/Type", new PdfName("/Page"));
 
                 var annots = new PdfArray();
                 
                 // Try to find existing annotations for this page to preserve them
                 var pageText = GetObjectText(pageRefForThisPage.Id);
-                var existingAnnotsMatch = System.Text.RegularExpressions.Regex.Match(pageText, @"/Annots\s*\[([^\]]*)\]");
-                if (existingAnnotsMatch.Success)
+                
+                // Preserve all keys from original page object
+                var pageKeys = System.Text.RegularExpressions.Regex.Matches(pageText, @"(/[^/ \(\)\[\]<>]+)\s+([^\n\r/<>\[\]]+|\[[^\]]*\]|<<[^>]*>>)");
+                foreach (System.Text.RegularExpressions.Match match in pageKeys)
                 {
-                    var existingRefs = existingAnnotsMatch.Groups[1].Value;
-                    var refMatches = System.Text.RegularExpressions.Regex.Matches(existingRefs, @"(\d+)\s+\d+\s+R");
-                    foreach (System.Text.RegularExpressions.Match m in refMatches)
+                    var key = match.Groups[1].Value;
+                    var val = match.Groups[2].Value.Trim();
+                    if (key == "/Annots")
                     {
-                        annots.Add(new PdfReference(int.Parse(m.Groups[1].Value)));
+                         // We'll handle /Annots separately
+                         var refMatches = System.Text.RegularExpressions.Regex.Matches(val, @"(\d+)\s+\d+\s+R");
+                         foreach (System.Text.RegularExpressions.Match m in refMatches)
+                         {
+                             annots.Add(new PdfReference(int.Parse(m.Groups[1].Value)));
+                         }
+                         continue;
                     }
+                    
+                    // If it's a simple reference, use PdfReference
+                    var refMatch = System.Text.RegularExpressions.Regex.Match(val, @"^(\d+)\s+\d+\s+R$");
+                    if (refMatch.Success)
+                        updatedPage.Add(key, new PdfReference(int.Parse(refMatch.Groups[1].Value)));
+                    else
+                        updatedPage.Add(key, new PdfRawObject(val));
                 }
 
                 // Add our new signature widgets for this specific page
@@ -177,23 +201,6 @@ public class PdfSigner
                 }
                 
                 updatedPage.Add("/Annots", annots);
-
-                // Preserve other keys from original page object using PdfRawObject
-                foreach (var key in new[] { "/Parent", "/Resources", "/MediaBox", "/Contents", "/Rotate" })
-                {
-                    var match = System.Text.RegularExpressions.Regex.Match(pageText, $@"{key}\s+([^\n\r/<>\[\]]+|\[[^\]]*\]|<<[^>]*>>)");
-                    if (match.Success)
-                    {
-                        var val = match.Groups[1].Value.Trim();
-                        // If it's a simple reference, use PdfReference
-                        var refMatch = System.Text.RegularExpressions.Regex.Match(val, @"^(\d+)\s+\d+\s+R$");
-                        if (refMatch.Success)
-                            updatedPage.Add(key, new PdfReference(int.Parse(refMatch.Groups[1].Value)));
-                        else
-                            updatedPage.Add(key, new PdfRawObject(val));
-                    }
-                }
-
                 _newObjects.Add(updatedPage);
             }
         }
@@ -214,11 +221,42 @@ public class PdfSigner
         writer.Write(Encoding.ASCII.GetBytes("xref\n"));
         
         var sortedIds = _offsets.Keys.OrderBy(k => k).ToList();
-        // This is a simplified xref for incremental update
-        foreach (var id in sortedIds)
+        // Standard xref: startId count
+        if (sortedIds.Count > 0)
         {
-            writer.Write(Encoding.ASCII.GetBytes($"{id} 1\n"));
-            writer.Write(Encoding.ASCII.GetBytes($"{_offsets[id]:D10} 00000 n \n"));
+            var currentRangeStart = sortedIds[0];
+            var currentRangeCount = 1;
+            
+            var ranges = new List<(int start, int count)>();
+            for (var i = 1; i < sortedIds.Count; i++)
+            {
+                if (sortedIds[i] == currentRangeStart + currentRangeCount)
+                {
+                    currentRangeCount++;
+                }
+                else
+                {
+                    ranges.Add((currentRangeStart, currentRangeCount));
+                    currentRangeStart = sortedIds[i];
+                    currentRangeCount = 1;
+                }
+            }
+            ranges.Add((currentRangeStart, currentRangeCount));
+
+            foreach (var range in ranges)
+            {
+                writer.Write(Encoding.ASCII.GetBytes($"{range.start} {range.count}\n"));
+                for (var i = 0; i < range.count; i++)
+                {
+                    var id = range.start + i;
+                    writer.Write(Encoding.ASCII.GetBytes($"{_offsets[id]:D10} 00000 n \n"));
+                }
+            }
+        }
+        else
+        {
+             // Fallback if somehow no new objects
+             writer.Write(Encoding.ASCII.GetBytes("0 1\n0000000000 65535 f \n"));
         }
 
         writer.Write("trailer\n"u8.ToArray());
@@ -309,32 +347,62 @@ public class PdfSigner
 
     private long FindLastStartXref()
     {
-        var text = Encoding.ASCII.GetString(_pdfBytes);
-        var index = text.LastIndexOf("startxref");
-        if (index == -1) return -1;
-        
-        var nextLine = text.Substring(index + 9).TrimStart();
-        var endOfNumber = 0;
-        while (endOfNumber < nextLine.Length && char.IsDigit(nextLine[endOfNumber])) endOfNumber++;
-        
-        if (long.TryParse(nextLine.Substring(0, endOfNumber), out var offset)) return offset;
+        // Search backwards for startxref
+        var marker = Encoding.ASCII.GetBytes("startxref");
+        for (var i = _pdfBytes.Length - marker.Length; i >= 0; i--)
+        {
+            var match = true;
+            for (var j = 0; j < marker.Length; j++)
+            {
+                if (_pdfBytes[i + j] != marker[j])
+                {
+                    match = false;
+                    break;
+                }
+            }
+            if (match)
+            {
+                var text = Encoding.ASCII.GetString(_pdfBytes, i + 9, Math.Min(100, _pdfBytes.Length - (i + 9)));
+                var nextLine = text.TrimStart();
+                var endOfNumber = 0;
+                while (endOfNumber < nextLine.Length && char.IsDigit(nextLine[endOfNumber])) endOfNumber++;
+                
+                if (long.TryParse(nextLine.Substring(0, endOfNumber), out var offset)) return offset;
+            }
+        }
         return -1;
     }
 
     private PdfDictionary ParseTrailer(long startxref)
     {
-        // Very basic parser: look for trailer << ... >>
-        var text = Encoding.ASCII.GetString(_pdfBytes, (int)startxref, _pdfBytes.Length - (int)startxref);
-        var trailerIndex = text.IndexOf("trailer");
+        // Find trailer keyword
+        var trailerMarker = Encoding.ASCII.GetBytes("trailer");
+        var trailerIndex = -1;
+        for (var i = (int)startxref; i <= _pdfBytes.Length - trailerMarker.Length; i++)
+        {
+            var match = true;
+            for (var j = 0; j < trailerMarker.Length; j++)
+            {
+                if (_pdfBytes[i + j] != trailerMarker[j])
+                {
+                    match = false;
+                    break;
+                }
+            }
+            if (match)
+            {
+                trailerIndex = i;
+                break;
+            }
+        }
+
         if (trailerIndex == -1) throw new Exception("Trailer not found");
         
-        var startDict = text.IndexOf("<<", trailerIndex);
-        var endDict = text.IndexOf(">>", startDict);
-        var dictText = text.Substring(startDict, endDict - startDict + 2);
+        var text = Encoding.ASCII.GetString(_pdfBytes, trailerIndex, Math.Min(2048, _pdfBytes.Length - trailerIndex));
         
         var dict = new PdfDictionary();
         // Extract Root
-        var rootMatch = System.Text.RegularExpressions.Regex.Match(dictText, @"/Root\s+(\d+)\s+(\d+)\s+R");
+        var rootMatch = System.Text.RegularExpressions.Regex.Match(text, @"/Root\s+(\d+)\s+(\d+)\s+R");
         if (rootMatch.Success)
         {
             dict.Add("/Root", new PdfReference(int.Parse(rootMatch.Groups[1].Value)));
@@ -369,9 +437,53 @@ public class PdfSigner
 
     private string GetObjectText(int id)
     {
-        var text = Encoding.ASCII.GetString(_pdfBytes);
-        var match = System.Text.RegularExpressions.Regex.Match(text, $@"{id}\s+\d+\s+obj\s*(.+?)\s*endobj", System.Text.RegularExpressions.RegexOptions.Singleline);
-        return match.Success ? match.Value : "";
+        // Search in binary for "{id} 0 obj"
+        var marker = Encoding.ASCII.GetBytes($"{id} 0 obj");
+        var startIndex = -1;
+        for (var i = 0; i <= _pdfBytes.Length - marker.Length; i++)
+        {
+            var match = true;
+            for (var j = 0; j < marker.Length; j++)
+            {
+                if (_pdfBytes[i + j] != marker[j])
+                {
+                    match = false;
+                    break;
+                }
+            }
+            if (match)
+            {
+                startIndex = i;
+                break;
+            }
+        }
+        
+        if (startIndex == -1) return "";
+        
+        // Find endobj
+        var endMarker = Encoding.ASCII.GetBytes("endobj");
+        var endIndex = -1;
+        for (var i = startIndex; i <= _pdfBytes.Length - endMarker.Length; i++)
+        {
+             var match = true;
+             for (var j = 0; j < endMarker.Length; j++)
+             {
+                 if (_pdfBytes[i + j] != endMarker[j])
+                 {
+                     match = false;
+                     break;
+                 }
+             }
+             if (match)
+             {
+                 endIndex = i;
+                 break;
+             }
+        }
+        
+        if (endIndex == -1) return "";
+        
+        return Encoding.ASCII.GetString(_pdfBytes, startIndex, endIndex - startIndex + 6);
     }
 
     private int FindMaxId()
@@ -383,6 +495,19 @@ public class PdfSigner
         {
             if (int.TryParse(match.Groups[1].Value, out var id) && id > maxId) maxId = id;
         }
+        
+        // Also check startxref trailer
+        var lastStartXref = FindLastStartXref();
+        if (lastStartXref != -1)
+        {
+             var trailerText = Encoding.ASCII.GetString(_pdfBytes, (int)lastStartXref, _pdfBytes.Length - (int)lastStartXref);
+             var sizeMatch = System.Text.RegularExpressions.Regex.Match(trailerText, @"/Size\s+(\d+)");
+             if (sizeMatch.Success && int.TryParse(sizeMatch.Groups[1].Value, out var size))
+             {
+                 if (size - 1 > maxId) maxId = size - 1;
+             }
+        }
+        
         return maxId;
     }
 }
