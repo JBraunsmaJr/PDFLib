@@ -79,12 +79,13 @@ public class PdfSigner
         acroForm.Add("/Fields", new PdfArray());
         _newObjects.Add(acroForm);
 
+        // Map sigDict ObjectId to zone ID for later signing
         var sigDictToZoneId = new Dictionary<int, string>();
 
         // Add signature fields for each zone
         var sigFields = (PdfArray)acroForm.Get("/Fields");
         
-        var pageRef = FindFirstPageRef(rootRef);
+        var firstPageRef = FindPageRef(rootRef, 1);
 
         foreach (var zone in _zones)
         {
@@ -103,9 +104,12 @@ public class PdfSigner
             sigField.Add("/Subtype", new PdfName("/Widget"));
             sigField.Add("/FT", new PdfName("/Sig"));
             sigField.Add("/Rect", new PdfArray(new PdfNumber(x), new PdfNumber(y), new PdfNumber(x + w), new PdfNumber(y + h)));
-            if (pageRef != null) sigField.Add("/P", pageRef);
+            
+            var targetPageRef = FindPageRef(rootRef, pageNum) ?? firstPageRef;
+            if (targetPageRef != null) sigField.Add("/P", targetPageRef);
+            
             sigField.Add("/V", new PdfReference(sigDict.ObjectId.Value));
-            sigField.Add("/T", new PdfString($"Signature-{zone.Id}"));
+            sigField.Add("/T", new PdfString(zone.Id));
             sigField.Add("/F", new PdfNumber(4)); // Print flag
             
             _newObjects.Add(sigField);
@@ -128,43 +132,70 @@ public class PdfSigner
 
         _newObjects.Add(updatedRoot);
         
-        // Update Page 1 to include the new Annotations
-        if (pageRef != null)
+        // Update Pages to include the new Annotations
+        // Group signature zones by page number
+        var zonesByPage = _zones.GroupBy(z => z.ToPdfCoordinates().pageNumber);
+        
+        foreach (var pageGroup in zonesByPage)
         {
-            var updatedPage = new PdfDictionary();
-            updatedPage.ObjectId = pageRef.Id;
-            updatedPage.Add("/Type", new PdfName("/Page"));
-            
-            var annots = new PdfArray();
-            foreach (var obj in _newObjects.OfType<PdfDictionary>().Where(o => o.GetOptional("/Subtype") is PdfName
-                     {
-                         Name: "/Widget"
-                     }))
-            {
-                annots.Add(new PdfReference(obj.ObjectId!.Value));
-            }
-            updatedPage.Add("/Annots", annots);
-            
-            // Try to preserve other keys from original page object
-            var pageText = GetObjectText(pageRef.Id);
-            foreach (var key in new[] { "/Parent", "/Resources", "/MediaBox", "/Contents" })
-            {
-                var match = System.Text.RegularExpressions.Regex.Match(pageText, $@"{key}\s+([^\n\r]+)");
-                if (!match.Success) continue;
-                
-                /*
-                 * TODO: This is a bit hacky as we're pasting raw text, but PdfObject.WriteTo takes bytes
-                 * Don't have a good Raw PdfObject
-                 * Shall use Regex to find Ids if they are references
-                 */
-                var refMatch = System.Text.RegularExpressions.Regex.Match(match.Groups[1].Value, @"(\d+)\s+\d+\s+R");
-                if (refMatch.Success)
-                    updatedPage.Add(key, new PdfReference(int.Parse(refMatch.Groups[1].Value)));
-                else if (match.Groups[1].Value.Contains('['))
-                    updatedPage.Add(key, new PdfArray());
-            }
+            var pageNum = pageGroup.Key;
+            var pageRefForThisPage = FindPageRef(rootRef, pageNum);
 
-            _newObjects.Add(updatedPage);
+            if (pageRefForThisPage != null)
+            {
+                var updatedPage = new PdfDictionary();
+                updatedPage.ObjectId = pageRefForThisPage.Id;
+                updatedPage.Add("/Type", new PdfName("/Page"));
+
+                var annots = new PdfArray();
+                
+                // Try to find existing annotations for this page to preserve them
+                var pageText = GetObjectText(pageRefForThisPage.Id);
+                var existingAnnotsMatch = System.Text.RegularExpressions.Regex.Match(pageText, @"/Annots\s*\[([^\]]*)\]");
+                if (existingAnnotsMatch.Success)
+                {
+                    var existingRefs = existingAnnotsMatch.Groups[1].Value;
+                    var refMatches = System.Text.RegularExpressions.Regex.Matches(existingRefs, @"(\d+)\s+\d+\s+R");
+                    foreach (System.Text.RegularExpressions.Match m in refMatches)
+                    {
+                        annots.Add(new PdfReference(int.Parse(m.Groups[1].Value)));
+                    }
+                }
+
+                // Add our new signature widgets for this specific page
+                foreach (var zone in pageGroup)
+                {
+                    // Find the signature field associated with this zone ID
+                    var sigField = _newObjects.OfType<PdfDictionary>()
+                        .FirstOrDefault(o => o.GetOptional("/Subtype") is PdfName { Name: "/Widget" } && 
+                                           o.GetOptional("/T") is PdfString s && Encoding.ASCII.GetString(s.GetBytes()).Contains(zone.Id));
+                    
+                    if (sigField != null)
+                    {
+                        annots.Add(new PdfReference(sigField.ObjectId!.Value));
+                    }
+                }
+                
+                updatedPage.Add("/Annots", annots);
+
+                // Preserve other keys from original page object using PdfRawObject
+                foreach (var key in new[] { "/Parent", "/Resources", "/MediaBox", "/Contents", "/Rotate" })
+                {
+                    var match = System.Text.RegularExpressions.Regex.Match(pageText, $@"{key}\s+([^\n\r/<>\[\]]+|\[[^\]]*\]|<<[^>]*>>)");
+                    if (match.Success)
+                    {
+                        var val = match.Groups[1].Value.Trim();
+                        // If it's a simple reference, use PdfReference
+                        var refMatch = System.Text.RegularExpressions.Regex.Match(val, @"^(\d+)\s+\d+\s+R$");
+                        if (refMatch.Success)
+                            updatedPage.Add(key, new PdfReference(int.Parse(refMatch.Groups[1].Value)));
+                        else
+                            updatedPage.Add(key, new PdfRawObject(val));
+                    }
+                }
+
+                _newObjects.Add(updatedPage);
+            }
         }
 
         // Write new objects
@@ -312,9 +343,9 @@ public class PdfSigner
         return dict;
     }
 
-    private PdfReference? FindFirstPageRef(PdfReference rootRef)
+    private PdfReference? FindPageRef(PdfReference rootRef, int pageNumber)
     {
-        // Follow Root -> Pages -> Kids[0]
+        // Follow Root -> Pages -> Kids
         var rootText = GetObjectText(rootRef.Id);
         var pagesMatch = System.Text.RegularExpressions.Regex.Match(rootText, @"/Pages\s+(\d+)\s+\d+\s+R");
         if (!pagesMatch.Success) return null;
@@ -322,9 +353,18 @@ public class PdfSigner
         var pagesId = int.Parse(pagesMatch.Groups[1].Value);
         var pagesText = GetObjectText(pagesId);
         
-        // Find first kid in Kids array
-        var kidsMatch = System.Text.RegularExpressions.Regex.Match(pagesText, @"/Kids\s*\[\s*(\d+)\s+\d+\s+R");
-        return kidsMatch.Success ? new PdfReference(int.Parse(kidsMatch.Groups[1].Value)) : null;
+        // Match all kids in Kids array
+        var kidsMatch = System.Text.RegularExpressions.Regex.Match(pagesText, @"/Kids\s*\[([^\]]*)\]");
+        if (!kidsMatch.Success) return null;
+        var kidsRefs = kidsMatch.Groups[1].Value;
+        var refMatches = System.Text.RegularExpressions.Regex.Matches(kidsRefs, @"(\d+)\s+\d+\s+R");
+            
+        if (pageNumber > 0 && pageNumber <= refMatches.Count)
+        {
+            return new PdfReference(int.Parse(refMatches[pageNumber - 1].Groups[1].Value));
+        }
+
+        return null;
     }
 
     private string GetObjectText(int id)

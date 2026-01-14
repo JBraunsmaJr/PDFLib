@@ -23,7 +23,7 @@ public class CdpPage : IAsyncDisposable
     private string? _cachedFrameId;
     private bool _networkEnabled;
     private bool _pageEnabled;
-    private string? field;
+    private string? _findSignatureAreasScript;
     
     /// <summary>
     /// Initializes a new instance of the <see cref="CdpPage"/> class.
@@ -62,9 +62,9 @@ public class CdpPage : IAsyncDisposable
     {
         get
         {
-            if (!string.IsNullOrWhiteSpace(field)) return field;
-            field = File.ReadAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "FindSignatureAreas.js"));
-            return field;
+            if (!string.IsNullOrWhiteSpace(_findSignatureAreasScript)) return _findSignatureAreasScript;
+            _findSignatureAreasScript = File.ReadAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "FindSignatureAreas.js"));
+            return _findSignatureAreasScript;
         }
     }
     

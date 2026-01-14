@@ -382,6 +382,10 @@ public class PdfDocument : IDisposable
         _outputStream.Write(hexBytes, 0, hexBytes.Length);
     }
 
+    /// <summary>
+    /// Saves the document to the specified file path.
+    /// </summary>
+    /// <param name="filePath">The path to save the PDF to.</param>
     public void Save(string filePath)
     {
         using var fs = new FileStream(filePath, FileMode.Create);

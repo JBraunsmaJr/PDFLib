@@ -263,9 +263,21 @@ public class CdpDispatcher
         return reader.GetString();
     }
 
+    /// <summary>
+    /// Defines a handler for CDP responses.
+    /// </summary>
     public interface IResponseHandler
     {
+        /// <summary>
+        /// Handles the incoming message.
+        /// </summary>
+        /// <param name="message">The raw message bytes.</param>
         void Handle(ReadOnlySequence<byte> message);
+
+        /// <summary>
+        /// Sets an exception if the command failed.
+        /// </summary>
+        /// <param name="ex">The exception.</param>
         void SetException(Exception ex);
     }
 
