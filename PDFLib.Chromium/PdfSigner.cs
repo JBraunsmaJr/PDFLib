@@ -543,6 +543,17 @@ public class PdfSigner
         return maxId;
     }
 
+    /// <summary>
+    /// Creates a transparent appearance stream for the signature.
+    /// </summary>
+    /// <param name="w">The width of the signature zone in PDF points.</param>
+    /// <param name="h">The height of the signature zone in PDF points.</param>
+    /// <returns>A <see cref="PdfStreamObject"/> representing the transparent appearance.</returns>
+    /// <remarks>
+    /// This method only requires dimensions because the appearance stream's bounding box (/BBox)
+    /// is relative to itself (0,0). The absolute positioning on the page is handled by the
+    /// /Rect entry in the signature field dictionary.
+    /// </remarks>
     private PdfStreamObject CreateAppearance(double w, double h)
     {
         var dict = new PdfDictionary();
@@ -551,14 +562,6 @@ public class PdfSigner
         dict.Add("/BBox", new PdfArray(new PdfNumber(0), new PdfNumber(0), new PdfNumber(w), new PdfNumber(h)));
         dict.Add("/Resources", new PdfDictionary()); 
         
-        /*
-         *  We're injecting the visualization portion of the signature via HTML
-         * However, we want the signature appearance to be transparent so that the HTML-based
-         * visualization shows through.
-         *
-         * What this essentially does, or should do, is to create a section within the PDF
-         * that's considered a signature area (based on my understanding)
-         */
         var content = "% Transparent appearance";
         
         return new PdfStreamObject(dict, content);
