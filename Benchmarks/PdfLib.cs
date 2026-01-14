@@ -13,7 +13,7 @@ namespace Benchmarks;
 public class PdfLib : IConverter
 {
     private ChromiumBrowser _browser;
-    private MemoryStream _memoryStream;
+    private FileStream _fileStream;
 
     public async Task ConvertAsync(string html)
     {
@@ -21,8 +21,8 @@ public class PdfLib : IConverter
         try
         {
             await page.SetContentAsync(html);
-            await page.PrintToPdfAsync(_memoryStream);
-            await _memoryStream.FlushAsync();
+            await page.PrintToPdfAsync(_fileStream);
+            await _fileStream.FlushAsync();
         }
         finally
         {
@@ -32,7 +32,11 @@ public class PdfLib : IConverter
 
     public async Task IterationSetupAsync(string html)
     {
-        _memoryStream = new MemoryStream();
+        /*
+            Memory stream is impacting our allocations during testing... 
+            By using a file, things are immediately flushed to disk instead so we avoid memory pressure.
+         */
+        _fileStream = File.Create("test.pdf");
     }
 
     public async Task GlobalSetupAsync()
@@ -47,7 +51,9 @@ public class PdfLib : IConverter
 
     public async Task IterationCleanupAsync()
     {
-        _memoryStream?.Close();
+        _fileStream?.Close();
+        if(File.Exists("test.pdf"))
+            File.Delete("test.pdf");
     }
 
     public async Task GlobalCleanupAsync()

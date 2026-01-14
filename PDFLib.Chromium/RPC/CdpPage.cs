@@ -1,7 +1,11 @@
 using System.Buffers;
 using System.Buffers.Text;
 using System.Collections.Concurrent;
+using System.Security.Cryptography;
+using System.Security.Cryptography.Pkcs;
+using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
+using JsonSerializer = System.Text.Json.JsonSerializer;
 
 namespace PDFLib.Chromium.RPC;
 
@@ -20,6 +24,8 @@ public class CdpPage : IAsyncDisposable
     private bool _networkEnabled;
     private bool _pageEnabled;
 
+    private const string SHA_256_Oid = "2.16.840.1.101.3.4.2.1";
+    
     public CdpPage(CdpDispatcher dispatcher, string sessionId, string targetId, SemaphoreSlim semaphore,
         BrowserOptions options)
     {
@@ -39,6 +45,54 @@ public class CdpPage : IAsyncDisposable
         catch
         {
         }
+    }
+
+    private string FindSignatureAreasScript
+    {
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(field)) return field;
+            field = File.ReadAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "FindSignatureAreas.js"));
+            return field;
+        }
+    }
+
+    public byte[] CreateCmsSignature(byte[] dataToHash, X509Certificate2 cert)
+    {
+        var contentInfo = new ContentInfo(dataToHash);
+        var signedCms = new SignedCms(contentInfo, detached: true);
+        var signer = new CmsSigner(cert)
+        {
+            DigestAlgorithm = new Oid(SHA_256_Oid) // SHA-256
+        };
+        signedCms.ComputeSignature(signer);
+        return signedCms.Encode();
+    }
+    
+    /// <summary>
+    /// Leverages the Chrome DevTools Protocol to find signature zones on a PDF document.
+    /// </summary>
+    /// <returns></returns>
+    public async Task<List<SignatureZone>> GetSignatureZonesAsync()
+    {
+        var script = FindSignatureAreasScript;
+
+        var response = await _dispatcher.SendCommandAsync("Runtime.evaluate", new
+        {
+            expression = script,
+            returnByValue = true
+        });
+
+        if (!response.TryGetProperty("result", out var result) || !result.TryGetProperty("value", out var value))
+            return new List<SignatureZone>();
+        
+        var options = new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true
+        };
+
+        var zones = JsonSerializer.Deserialize<List<SignatureZone>>(value.GetRawText(), options);
+        return zones ?? new List<SignatureZone>();
     }
 
     /// <summary>

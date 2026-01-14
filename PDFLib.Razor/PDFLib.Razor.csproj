@@ -14,7 +14,7 @@
         <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.1"/>
         <PackageReference Include="SkiaSharp" Version="3.119.1"/>
         <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="3.119.1"/>
-        <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.1"/>
+        <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.2" />
     </ItemGroup>
 
 </Project>

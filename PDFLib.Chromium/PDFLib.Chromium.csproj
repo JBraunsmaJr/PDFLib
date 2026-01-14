@@ -14,4 +14,15 @@
         <None Remove="samples\network-wait.html"/>
     </ItemGroup>
 
+    <ItemGroup>
+      <None Remove="FindSignatureAreas.js" />
+      <AdditionalFiles Include="FindSignatureAreas.js">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </AdditionalFiles>
+    </ItemGroup>
+
+    <ItemGroup>
+      <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.2" />
+    </ItemGroup>
+
 </Project>
