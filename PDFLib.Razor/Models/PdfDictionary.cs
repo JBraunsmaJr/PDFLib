@@ -43,11 +43,11 @@ public class PdfDictionary : PdfObject
     /// <param name="writer">The writer to use.</param>
     public override void WriteTo(BinaryWriter writer)
     {
-        writer.Write(ToAscii("<<"));
+        writer.Write(ToAscii("<<\n"));
 
         foreach (var kvp in _dict)
         {
-            writer.Write(ToAscii($" {kvp.Key} "));
+            writer.Write(ToAscii($"{kvp.Key} "));
 
             if (kvp.Value.ObjectId.HasValue && !(kvp.Value is PdfReference))
             {
@@ -56,12 +56,11 @@ public class PdfDictionary : PdfObject
             else
             {
                 kvp.Value.WriteTo(writer);
-                if (kvp.Value is PdfDictionary || kvp.Value is PdfArray)
-                    writer.Write(ToAscii("\n"));
+                writer.Write(ToAscii("\n"));
             }
         }
 
-        writer.Write(ToAscii(" >>"));
+        writer.Write(ToAscii(">>"));
     }
 
     /// <summary>
