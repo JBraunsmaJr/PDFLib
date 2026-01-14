@@ -1,6 +1,8 @@
 services:
   app:
-    build: .
+    build:
+      context: ..
+      dockerfile: PDFLib.Chromium.TestConsole/Dockerfile
     image: pdflib-chromium
     volumes:
-      - ./test-out:/out
+      - ./out:/app/out

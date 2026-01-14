@@ -44,7 +44,7 @@ public class SignatureZone
     /// <param name="pdfPageHeight">The height of the PDF page in points (e.g., 841.89 for A4).</param>
     /// <returns>A tuple containing (x, y, width, height, pageNumber) in PDF-compatible coordinates.</returns>
     public (double x, double y, double width, double height, int pageNumber) ToPdfCoordinates(
-        double pdfPageHeight = 841.89)
+        double pdfPageHeight = 792.0)
     {
         var scale = 0.75;
 

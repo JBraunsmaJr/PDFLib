@@ -10,6 +10,10 @@ namespace PDFLib.Chromium;
 /// Provides functionality to sign PDF documents by injecting digital signature fields and metadata.
 /// Supports incremental updates and multiple certificates.
 /// </summary>
+/// <remarks>
+/// PDF Syntax is tricky so comments are left all over the place to try
+/// and keep things straight
+/// </remarks>
 public class PdfSigner
 {
     private readonly byte[] _pdfBytes;
@@ -124,7 +128,7 @@ public class PdfSigner
                 var cert = _certificates.TryGetValue(zone.Id, out var c) ? c : _defaultCertificate;
                 if (cert != null)
                 {
-                    var appearance = CreateAppearance(w, h, cert);
+                    var appearance = CreateAppearance(w, h);
                     appearance.ObjectId = _nextId++;
                     _newObjects.Add(appearance);
                     
@@ -146,7 +150,6 @@ public class PdfSigner
         var rootText = GetObjectText(rootRef.Id);
         
         // Match all keys in the dictionary: /Key value
-        // Refined regex to better handle nested dictionaries and arrays
         var keyMatches = System.Text.RegularExpressions.Regex.Matches(rootText, @"(/[^/ \(\)\[\]<>]+)\s+([^\n\r/<>\[\]]+|\[(?:[^\[\]]*|\[[^\[\]]*\])*\]|<<(?:[^<>]*|<<[^<>]*>>)*>>)");
         foreach (System.Text.RegularExpressions.Match match in keyMatches)
         {
@@ -179,62 +182,61 @@ public class PdfSigner
             var pageNum = pageGroup.Key;
             var pageRefForThisPage = FindPageRef(rootRef, pageNum);
 
-            if (pageRefForThisPage != null)
+            if (pageRefForThisPage == null) continue;
+            
+            var updatedPage = new PdfDictionary();
+            updatedPage.ObjectId = pageRefForThisPage.Id;
+
+            var annots = new PdfArray();
+                
+            // Try to find existing annotations for this page to preserve them
+            var pageText = GetObjectText(pageRefForThisPage.Id);
+                
+            // Preserve all keys from original page object
+            var pageKeys = System.Text.RegularExpressions.Regex.Matches(pageText, @"(/[^/ \(\)\[\]<>]+)\s+([^\n\r/<>\[\]]+|\[(?:[^\[\]]*|\[[^\[\]]*\])*\]|<<(?:[^<>]*|<<[^<>]*>>)*>>)");
+            foreach (System.Text.RegularExpressions.Match match in pageKeys)
             {
-                var updatedPage = new PdfDictionary();
-                updatedPage.ObjectId = pageRefForThisPage.Id;
-
-                var annots = new PdfArray();
-                
-                // Try to find existing annotations for this page to preserve them
-                var pageText = GetObjectText(pageRefForThisPage.Id);
-                
-                // Preserve all keys from original page object
-                var pageKeys = System.Text.RegularExpressions.Regex.Matches(pageText, @"(/[^/ \(\)\[\]<>]+)\s+([^\n\r/<>\[\]]+|\[(?:[^\[\]]*|\[[^\[\]]*\])*\]|<<(?:[^<>]*|<<[^<>]*>>)*>>)");
-                foreach (System.Text.RegularExpressions.Match match in pageKeys)
+                var key = match.Groups[1].Value;
+                var val = match.Groups[2].Value.Trim();
+                if (key == "/Annots")
                 {
-                    var key = match.Groups[1].Value;
-                    var val = match.Groups[2].Value.Trim();
-                    if (key == "/Annots")
+                    // We'll handle /Annots separately
+                    var refMatches = System.Text.RegularExpressions.Regex.Matches(val, @"(\d+)\s+\d+\s+R");
+                    foreach (System.Text.RegularExpressions.Match m in refMatches)
                     {
-                        // We'll handle /Annots separately
-                        var refMatches = System.Text.RegularExpressions.Regex.Matches(val, @"(\d+)\s+\d+\s+R");
-                        foreach (System.Text.RegularExpressions.Match m in refMatches)
-                        {
-                            annots.Add(new PdfReference(int.Parse(m.Groups[1].Value)));
-                        }
-                        continue;
+                        annots.Add(new PdfReference(int.Parse(m.Groups[1].Value)));
                     }
-                    
-                    // If it's a simple reference, use PdfReference
-                    var refMatch = System.Text.RegularExpressions.Regex.Match(val, @"^(\d+)\s+\d+\s+R$");
-                    if (refMatch.Success)
-                    {
-                        updatedPage.Add(key, new PdfReference(int.Parse(refMatch.Groups[1].Value)));
-                    }
-                    else
-                    {
-                        updatedPage.Add(key, new PdfRawObject(val));
-                    }
+                    continue;
                 }
-
-                // Add our new signature widgets for this specific page
-                foreach (var zone in pageGroup)
+                    
+                // If it's a simple reference, use PdfReference
+                var refMatch = System.Text.RegularExpressions.Regex.Match(val, @"^(\d+)\s+\d+\s+R$");
+                if (refMatch.Success)
                 {
-                    // Find the signature field associated with this zone ID
-                    var sigField = _newObjects.OfType<PdfDictionary>()
-                        .FirstOrDefault(o => o.GetOptional("/Subtype") is PdfName { Name: "/Widget" } && 
-                                           o.GetOptional("/T") is PdfString s && s.GetBytes().Length > 0 && Encoding.ASCII.GetString(s.GetBytes()).Contains(zone.Id));
-                    
-                    if (sigField != null)
-                    {
-                        annots.Add(new PdfReference(sigField.ObjectId!.Value));
-                    }
+                    updatedPage.Add(key, new PdfReference(int.Parse(refMatch.Groups[1].Value)));
                 }
-                
-                updatedPage.Add("/Annots", annots);
-                _newObjects.Add(updatedPage);
+                else
+                {
+                    updatedPage.Add(key, new PdfRawObject(val));
+                }
             }
+
+            // Add our new signature widgets for this specific page
+            foreach (var zone in pageGroup)
+            {
+                // Find the signature field associated with this zone ID
+                var sigField = _newObjects.OfType<PdfDictionary>()
+                    .FirstOrDefault(o => o.GetOptional("/Subtype") is PdfName { Name: "/Widget" } && 
+                                         o.GetOptional("/T") is PdfString s && s.GetBytes().Length > 0 && Encoding.ASCII.GetString(s.GetBytes()).Contains(zone.Id));
+                    
+                if (sigField != null)
+                {
+                    annots.Add(new PdfReference(sigField.ObjectId!.Value));
+                }
+            }
+                
+            updatedPage.Add("/Annots", annots);
+            _newObjects.Add(updatedPage);
         }
 
         // Write new objects
@@ -395,15 +397,15 @@ public class PdfSigner
                     break;
                 }
             }
-            if (match)
-            {
-                var text = Encoding.ASCII.GetString(_pdfBytes, i + 9, Math.Min(100, _pdfBytes.Length - (i + 9)));
-                var nextLine = text.TrimStart();
-                var endOfNumber = 0;
-                while (endOfNumber < nextLine.Length && char.IsDigit(nextLine[endOfNumber])) endOfNumber++;
+
+            if (!match) continue;
+            
+            var text = Encoding.ASCII.GetString(_pdfBytes, i + 9, Math.Min(100, _pdfBytes.Length - (i + 9)));
+            var nextLine = text.TrimStart();
+            var endOfNumber = 0;
+            while (endOfNumber < nextLine.Length && char.IsDigit(nextLine[endOfNumber])) endOfNumber++;
                 
-                if (long.TryParse(nextLine.Substring(0, endOfNumber), out var offset)) return offset;
-            }
+            if (long.TryParse(nextLine.Substring(0, endOfNumber), out var offset)) return offset;
         }
         return -1;
     }
@@ -418,11 +420,9 @@ public class PdfSigner
             var match = true;
             for (var j = 0; j < trailerMarker.Length; j++)
             {
-                if (_pdfBytes[i + j] != trailerMarker[j])
-                {
-                    match = false;
-                    break;
-                }
+                if (_pdfBytes[i + j] == trailerMarker[j]) continue;
+                match = false;
+                break;
             }
             if (match)
             {
@@ -496,9 +496,7 @@ public class PdfSigner
         var endMarker = Encoding.ASCII.GetBytes("endobj");
         var endIndex = FindInBinary(_pdfBytes, endMarker, startIndex);
         
-        if (endIndex == -1) return "";
-        
-        return Encoding.ASCII.GetString(_pdfBytes, startIndex, endIndex - startIndex + 6);
+        return endIndex == -1 ? "" : Encoding.ASCII.GetString(_pdfBytes, startIndex, endIndex - startIndex + 6);
     }
 
     private int FindInBinary(byte[] haystack, byte[] needle, int startSearch = 0)
@@ -508,11 +506,10 @@ public class PdfSigner
             var match = true;
             for (var j = 0; j < needle.Length; j++)
             {
-                if (haystack[i + j] != needle[j])
-                {
-                    match = false;
-                    break;
-                }
+                if (haystack[i + j] == needle[j]) continue;
+                
+                match = false;
+                break;
             }
             if (match) return i;
         }
@@ -531,56 +528,39 @@ public class PdfSigner
         
         // Also check startxref trailer
         var lastStartXref = FindLastStartXref();
-        if (lastStartXref != -1)
-        {
-             // Look for trailer after the last xref
-             var trailerIndex = FindInBinary(_pdfBytes, Encoding.ASCII.GetBytes("trailer"), (int)lastStartXref);
-             if (trailerIndex != -1)
-             {
-                 var trailerText = Encoding.ASCII.GetString(_pdfBytes, trailerIndex, Math.Min(1024, _pdfBytes.Length - trailerIndex));
-                 var sizeMatch = System.Text.RegularExpressions.Regex.Match(trailerText, @"/Size\s+(\d+)");
-                 if (sizeMatch.Success && int.TryParse(sizeMatch.Groups[1].Value, out var size))
-                 {
-                     if (size - 1 > maxId) maxId = size - 1;
-                 }
-             }
-        }
+        if (lastStartXref == -1) return maxId;
         
+        // Look for trailer after the last xref
+        var trailerIndex = FindInBinary(_pdfBytes, Encoding.ASCII.GetBytes("trailer"), (int)lastStartXref);
+        if (trailerIndex == -1) return maxId;
+             
+        var trailerText = Encoding.ASCII.GetString(_pdfBytes, trailerIndex, Math.Min(1024, _pdfBytes.Length - trailerIndex));
+        var sizeMatch = System.Text.RegularExpressions.Regex.Match(trailerText, @"/Size\s+(\d+)");
+        
+        if (!sizeMatch.Success || !int.TryParse(sizeMatch.Groups[1].Value, out var size)) return maxId;
+        if (size - 1 > maxId) maxId = size - 1;
+
         return maxId;
     }
 
-    private PdfStreamObject CreateAppearance(double w, double h, X509Certificate2 cert)
+    private PdfStreamObject CreateAppearance(double w, double h)
     {
         var dict = new PdfDictionary();
         dict.Add("/Type", new PdfName("/XObject"));
         dict.Add("/Subtype", new PdfName("/Form"));
         dict.Add("/BBox", new PdfArray(new PdfNumber(0), new PdfNumber(0), new PdfNumber(w), new PdfNumber(h)));
-        dict.Add("/Resources", new PdfDictionary()); // Empty resources
-
-        var commonName = cert.SubjectName.Name.Split(',')
-            .FirstOrDefault(s => s.Trim().StartsWith("CN=", StringComparison.OrdinalIgnoreCase))
-            ?.Replace("CN=", "", StringComparison.OrdinalIgnoreCase).Trim() ?? cert.Subject;
-
-        var text = $"Digitally signed by {commonName}\nDate: {DateTime.Now:yyyy.MM.dd HH:mm:ss zzz}";
+        dict.Add("/Resources", new PdfDictionary()); 
         
-        // Simple PDF content stream to draw text
-        // Note: This uses standard fonts (Helvetica) which usually don't need explicit resource entries in some viewers
-        // but for better compatibility we'd need a /Font entry. 
-        // For a "no external lib" implementation, we'll keep it minimal.
-        // We use ( ) for text which needs to be escaped. PdfString does it, but here we are in a content stream.
-        var escapedText = text.Replace("\\", "\\\\").Replace("(", "\\(").Replace(")", "\\)");
-        var content = $"q 0 0 {w:F2} {h:F2} re W n BT /Helvetica 8 Tf 2 10 Td ({escapedText}) Tj ET Q";
+        /*
+         *  We're injecting the visualization portion of the signature via HTML
+         * However, we want the signature appearance to be transparent so that the HTML-based
+         * visualization shows through.
+         *
+         * What this essentially does, or should do, is to create a section within the PDF
+         * that's considered a signature area (based on my understanding)
+         */
+        var content = "% Transparent appearance";
         
-        // If we want to be more robust, we should define the font.
-        var resources = (PdfDictionary)dict.Get("/Resources");
-        var fontDict = new PdfDictionary();
-        var helv = new PdfDictionary();
-        helv.Add("/Type", new PdfName("/Font"));
-        helv.Add("/Subtype", new PdfName("/Type1"));
-        helv.Add("/BaseFont", new PdfName("/Helvetica"));
-        fontDict.Add("/Helvetica", helv);
-        resources.Add("/Font", fontDict);
-
         return new PdfStreamObject(dict, content);
     }
 }

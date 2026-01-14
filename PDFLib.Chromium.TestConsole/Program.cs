@@ -28,17 +28,20 @@ async Task RunSignatureSamples()
     await using var page = await browser.CreatePageAsync();
     await page.SetContentAsync(html);
     
-    var zones = await page.GetSignatureZonesAsync();
+    var signatureData = new Dictionary<string, (string name, string date)>();
+    signatureData["signature-area-1"] = ("Test Signer 1", DateTime.Now.ToString("yyyy.MM.dd HH:mm:ss"));
+    signatureData["signature-area-2"] = ("Test Signer 2", DateTime.Now.ToString("yyyy.MM.dd HH:mm:ss"));
+
+    using var ms = new MemoryStream();
+    var zones = await page.PrintToPdfAsync(ms, true, signatureData);
+    var pdfBytes = ms.ToArray();
+
     Console.WriteLine($"Found {zones.Count} signature zones:");
     foreach (var zone in zones)
     {
         var (x, y, w, h, p) = zone.ToPdfCoordinates();
         Console.WriteLine($"  - {zone.Id}: Page {p}, Pos ({x:F1}, {y:F1}), Size {w:F1}x{h:F1}");
     }
-
-    using var ms = new MemoryStream();
-    await page.PrintToPdfAsync(ms, true);
-    var pdfBytes = ms.ToArray();
 
     if (zones.Count > 0)
     {
