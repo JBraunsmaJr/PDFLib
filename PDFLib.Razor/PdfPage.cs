@@ -4,6 +4,9 @@ using PDFLib.Models;
 
 namespace PDFLib;
 
+/// <summary>
+/// Represents a single page within a <see cref="PdfDocument"/> and provides methods for drawing content.
+/// </summary>
 public class PdfPage
 {
     private readonly StreamWriter _contentWriter;
@@ -13,6 +16,12 @@ public class PdfPage
     private readonly Stream _tempStream;
     private readonly PdfDictionary _xobjects;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="PdfPage"/> class.
+    /// </summary>
+    /// <param name="doc">The parent PDF document.</param>
+    /// <param name="pageId">The object ID for this page.</param>
+    /// <param name="parentId">The object ID of the parent /Pages node.</param>
     public PdfPage(PdfDocument doc, int pageId, int parentId)
     {
         _doc = doc;
@@ -39,8 +48,16 @@ public class PdfPage
         PageDict.Add("/Resources", _resources);
     }
 
+    /// <summary>
+    /// Gets the dictionary representing this page's properties.
+    /// </summary>
     public PdfDictionary PageDict { get; }
 
+    /// <summary>
+    /// Adds a font resource to the page.
+    /// </summary>
+    /// <param name="alias">The alias name to use in drawing operations (e.g., "F1").</param>
+    /// <param name="fontName">The name of the base font (e.g., "Helvetica").</param>
     public void AddFont(string alias, string fontName)
     {
         var fontDict = new PdfDictionary();
@@ -52,17 +69,42 @@ public class PdfPage
         _fonts.Add("/" + alias, new PdfReference(fontId));
     }
 
+    /// <summary>
+    /// Draws text on the page.
+    /// </summary>
+    /// <param name="fontAlias">The alias of the font to use.</param>
+    /// <param name="size">The font size.</param>
+    /// <param name="x">The X coordinate.</param>
+    /// <param name="y">The Y coordinate.</param>
+    /// <param name="text">The text to draw.</param>
+    /// <param name="color">The text color (hex or named).</param>
     public void DrawText(string fontAlias, int size, int x, int y, string text, string? color = null)
     {
         SetFillColor(color ?? "black");
         _contentWriter.Write($"BT /{fontAlias} {size} Tf {x} {y} Td ({text}) Tj ET\n");
     }
 
+    /// <summary>
+    /// Draws a line between two points.
+    /// </summary>
+    /// <param name="x1">The start X coordinate.</param>
+    /// <param name="y1">The start Y coordinate.</param>
+    /// <param name="x2">The end X coordinate.</param>
+    /// <param name="y2">The end Y coordinate.</param>
     public void DrawLine(int x1, int y1, int x2, int y2)
     {
         _contentWriter.Write($"{x1} {y1} m {x2} {y2} l S\n");
     }
 
+    /// <summary>
+    /// Draws an image on the page.
+    /// </summary>
+    /// <param name="alias">The alias name for the image resource.</param>
+    /// <param name="image">The image object to draw.</param>
+    /// <param name="x">The X coordinate.</param>
+    /// <param name="y">The Y coordinate.</param>
+    /// <param name="width">The width of the image.</param>
+    /// <param name="height">The height of the image.</param>
     public void DrawImage(string alias, PdfImage image, int x, int y, int width, int height)
     {
         if (image.ObjectId == null)
@@ -75,11 +117,26 @@ public class PdfPage
         }
     }
 
+    /// <summary>
+    /// Renders a table on the page.
+    /// </summary>
+    /// <param name="table">The table to render.</param>
+    /// <param name="x">The X coordinate of the top-left corner of the table.</param>
+    /// <param name="y">The Y coordinate of the top-left corner of the table.</param>
     public void DrawTable(PdfTable table, int x, int y)
     {
         table.Render(this, x, y);
     }
 
+    /// <summary>
+    /// Draws a rectangle on the page.
+    /// </summary>
+    /// <param name="x">The X coordinate.</param>
+    /// <param name="y">The Y coordinate.</param>
+    /// <param name="width">The width.</param>
+    /// <param name="height">The height.</param>
+    /// <param name="fillColor">The fill color (optional).</param>
+    /// <param name="strokeColor">The stroke color (optional).</param>
     public void DrawRectangle(int x, int y, int width, int height, string? fillColor = null, string? strokeColor = null)
     {
         if (fillColor != null)
@@ -99,12 +156,20 @@ public class PdfPage
         }
     }
 
+    /// <summary>
+    /// Sets the fill color for subsequent drawing operations.
+    /// </summary>
+    /// <param name="color">The color to set (hex or named).</param>
     public void SetFillColor(string color)
     {
         var (r, g, b) = ParseColor(color);
         _contentWriter.Write($"{r:0.###} {g:0.###} {b:0.###} rg\n");
     }
 
+    /// <summary>
+    /// Sets the stroke color for subsequent drawing operations.
+    /// </summary>
+    /// <param name="color">The color to set (hex or named).</param>
     public void SetStrokeColor(string color)
     {
         var (r, g, b) = ParseColor(color);
@@ -152,6 +217,10 @@ public class PdfPage
         };
     }
 
+    /// <summary>
+    /// Finalizes the page content and writes it to the document.
+    /// </summary>
+    /// <param name="compress">Whether to compress the page content using FlateDecode.</param>
     public void Build(bool compress = false)
     {
         _contentWriter.Flush();

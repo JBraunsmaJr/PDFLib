@@ -34,6 +34,11 @@ public class CdpDispatcher
 
     #endregion
     
+    /// <summary>
+    /// Initializes a new instance of the <see cref="CdpDispatcher"/> class.
+    /// </summary>
+    /// <param name="writer">The stream to write commands to.</param>
+    /// <param name="reader">The stream to read responses from.</param>
     public CdpDispatcher(Stream writer, Stream reader)
     {
         _writer = writer;
@@ -80,6 +85,15 @@ public class CdpDispatcher
         }
     }
 
+    /// <summary>
+    /// Sends a CDP command and uses a custom response handler.
+    /// </summary>
+    /// <param name="method">The CDP method name.</param>
+    /// <param name="params">The command parameters.</param>
+    /// <param name="sessionId">The optional session ID.</param>
+    /// <param name="handler">The handler to process the response.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
     public async Task SendCommandInternalAsync(string method, object? @params, string? sessionId,
         IResponseHandler handler, CancellationToken cancellationToken = default)
     {

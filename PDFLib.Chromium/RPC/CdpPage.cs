@@ -10,7 +10,7 @@ using JsonSerializer = System.Text.Json.JsonSerializer;
 namespace PDFLib.Chromium.RPC;
 
 /// <summary>
-/// Chrome DevTools Protocol (CDP) page for interacting with a specific browser tab.
+/// Chrome DevTools Protocol (CDP) page for interacting with a specific browser tab and generating PDFs.
 /// </summary>
 public class CdpPage : IAsyncDisposable
 {
@@ -23,9 +23,16 @@ public class CdpPage : IAsyncDisposable
     private string? _cachedFrameId;
     private bool _networkEnabled;
     private bool _pageEnabled;
-
-    private const string SHA_256_Oid = "2.16.840.1.101.3.4.2.1";
+    private string? field;
     
+    /// <summary>
+    /// Initializes a new instance of the <see cref="CdpPage"/> class.
+    /// </summary>
+    /// <param name="dispatcher">The CDP dispatcher.</param>
+    /// <param name="sessionId">The CDP session ID.</param>
+    /// <param name="targetId">The CDP target ID.</param>
+    /// <param name="semaphore">The semaphore for controlling concurrent renders.</param>
+    /// <param name="options">The browser options.</param>
     public CdpPage(CdpDispatcher dispatcher, string sessionId, string targetId, SemaphoreSlim semaphore,
         BrowserOptions options)
     {
@@ -36,6 +43,10 @@ public class CdpPage : IAsyncDisposable
         _semaphore = semaphore;
     }
 
+    /// <summary>
+    /// Closes the page and associated target.
+    /// </summary>
+    /// <returns>A task that represents the asynchronous operation.</returns>
     public async ValueTask DisposeAsync()
     {
         try
@@ -56,23 +67,11 @@ public class CdpPage : IAsyncDisposable
             return field;
         }
     }
-
-    public byte[] CreateCmsSignature(byte[] dataToHash, X509Certificate2 cert)
-    {
-        var contentInfo = new ContentInfo(dataToHash);
-        var signedCms = new SignedCms(contentInfo, detached: true);
-        var signer = new CmsSigner(cert)
-        {
-            DigestAlgorithm = new Oid(SHA_256_Oid) // SHA-256
-        };
-        signedCms.ComputeSignature(signer);
-        return signedCms.Encode();
-    }
     
     /// <summary>
-    /// Leverages the Chrome DevTools Protocol to find signature zones on a PDF document.
+    /// Leverages the Chrome DevTools Protocol to find signature zones in the current page's DOM.
     /// </summary>
-    /// <returns></returns>
+    /// <returns>A list of detected <see cref="SignatureZone"/> objects.</returns>
     public async Task<List<SignatureZone>> GetSignatureZonesAsync()
     {
         var script = FindSignatureAreasScript;
@@ -96,26 +95,31 @@ public class CdpPage : IAsyncDisposable
     }
 
     /// <summary>
-    /// Combines <see cref="SetContentAsync"/> and <see cref="PrintToPdfAsync(string,System.IO.Stream,System.Threading.CancellationToken)"/>
+    /// Sets the HTML content and prints the page to a PDF stream.
     /// </summary>
-    /// <param name="html">HTML to convert into PDF</param>
-    /// <param name="destinationStream">Where to stream PDF</param>
-    /// <param name="cancellationToken"></param>
-    public async Task PrintToPdfAsync(string html, Stream destinationStream,
+    /// <param name="html">The HTML to convert into PDF.</param>
+    /// <param name="destinationStream">The stream where the PDF will be written.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A list of signature zones found in the document.</returns>
+    public async Task<List<SignatureZone>> PrintToPdfAsync(string html, Stream destinationStream,
         CancellationToken cancellationToken = default)
     {
         await SetContentAsync(html);
-        await PrintToPdfAsync(destinationStream, cancellationToken);
+        return await PrintToPdfAsync(destinationStream, true, cancellationToken);
     }
     
     /// <summary>
-    /// Assumes the provided HTML content is valid and sets it as the page's content. 
+    /// Prints the current page content to a PDF stream.
     /// </summary>
-    /// <param name="destinationStream">Where to stream PDF</param>
-    /// <param name="cancellationToken"></param>
-    /// <exception cref="Exception"></exception>
-    public async Task PrintToPdfAsync(Stream destinationStream, CancellationToken cancellationToken = default)
+    /// <param name="destinationStream">The stream where the PDF will be written.</param>
+    /// <param name="includeZones">Whether to fetch and return signature zones.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A list of signature zones found in the document.</returns>
+    /// <exception cref="Exception">Thrown if PDF generation fails.</exception>
+    public async Task<List<SignatureZone>> PrintToPdfAsync(Stream destinationStream, bool includeZones = false, CancellationToken cancellationToken = default)
     {
+        List<SignatureZone> zones = new();
+        
         await _semaphore.WaitAsync(cancellationToken);
 
         // 1MB buffer handles 256KB chunks comfortably
@@ -123,6 +127,11 @@ public class CdpPage : IAsyncDisposable
 
         try
         {
+            if (includeZones)
+            {
+                zones = await GetSignatureZonesAsync();
+            }
+            
             var result = await _dispatcher.SendCommandAsync("Page.printToPDF", new
             {
                 printBackground = true,
@@ -141,7 +150,7 @@ public class CdpPage : IAsyncDisposable
                 if (!result.TryGetProperty("data", out var dataProp)) throw new Exception("No handle or data");
                 if (dataProp.ValueKind == JsonValueKind.String && dataProp.TryGetBytesFromBase64(out var bytes))
                     await destinationStream.WriteAsync(bytes, cancellationToken);
-                return;
+                return zones;
             }
 
             try
@@ -168,6 +177,7 @@ public class CdpPage : IAsyncDisposable
                 }
 
                 await destinationStream.FlushAsync(cancellationToken);
+                return zones;
             }
             finally
             {

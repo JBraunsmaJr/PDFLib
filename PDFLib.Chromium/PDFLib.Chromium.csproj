@@ -6,6 +6,7 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
     </PropertyGroup>
 
     <ItemGroup>
@@ -23,6 +24,10 @@
 
     <ItemGroup>
       <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.2" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\PDFLib.Razor\PDFLib.Razor.csproj" />
     </ItemGroup>
 
 </Project>

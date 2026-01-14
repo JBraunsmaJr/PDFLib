@@ -5,6 +5,9 @@ using PDFLib.Chromium.RPC;
 
 namespace PDFLib.Chromium;
 
+/// <summary>
+/// Provides a wrapper around the Chromium browser process for PDF generation.
+/// </summary>
 public class ChromiumBrowser : IDisposable
 {
     private static ChromiumBrowser? _instance;
@@ -16,12 +19,18 @@ public class ChromiumBrowser : IDisposable
     private Process? _process;
     private SemaphoreSlim _renderSemaphore;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="ChromiumBrowser"/> class.
+    /// </summary>
     public ChromiumBrowser()
     {
-        if (_instance is null) _instance = this;
+        _instance ??= this;
     }
 
 
+    /// <summary>
+    /// Gets the singleton instance of the <see cref="ChromiumBrowser"/>.
+    /// </summary>
     public static ChromiumBrowser Instance
     {
         get
@@ -31,6 +40,9 @@ public class ChromiumBrowser : IDisposable
         }
     }
 
+    /// <summary>
+    /// Disposes of the browser process and associated resources.
+    /// </summary>
     public void Dispose()
     {
         if (_disposed) return;
@@ -64,10 +76,11 @@ public class ChromiumBrowser : IDisposable
     private static extern int fcntl(int fd, int cmd, int arg);
 
     /// <summary>
-    ///     Start the Chromium browser process with the given options
+    /// Starts the Chromium browser process with the given options.
     /// </summary>
-    /// <param name="options"></param>
-    /// <exception cref="Exception"></exception>
+    /// <param name="options">The configuration options for the browser.</param>
+    /// <returns>A task that represents the asynchronous start operation.</returns>
+    /// <exception cref="Exception">Thrown if the browser fails to start or become ready.</exception>
     public async Task StartAsync(BrowserOptions? options)
     {
         if (_hasStarted) return;
@@ -86,7 +99,9 @@ public class ChromiumBrowser : IDisposable
         fcntl(pipeIn[1], 2, 0);
 
         var shellCmd =
-            $"exec 3<&{pipeOut[0]} 4>&{pipeIn[1]}; exec {_options.BinaryPath} --headless --remote-debugging-pipe --no-sandbox --disable-gpu --disable-dev-shm-usage --disable-software-rasterizer --disable-extensions --disable-background-networking --disable-sync --disable-default-apps --mute-audio";
+            $"exec 3<&{pipeOut[0]} 4>&{pipeIn[1]}; exec {_options.BinaryPath} --headless --remote-debugging-pipe --no-sandbox " +
+            "--disable-gpu --disable-dev-shm-usage --disable-software-rasterizer --disable-extensions " +
+            "--disable-background-networking --disable-sync --disable-default-apps --mute-audio";
 
         _process = Process.Start(new ProcessStartInfo
         {
@@ -118,6 +133,10 @@ public class ChromiumBrowser : IDisposable
         if (!ready) throw new Exception("Chromium failed to become ready within timeout");
     }
 
+    /// <summary>
+    /// Creates a new page (tab) in the browser.
+    /// </summary>
+    /// <returns>A task that represents the asynchronous creation operation. The task result is a <see cref="CdpPage"/>.</returns>
     public async Task<CdpPage> CreatePageAsync()
     {
         var targetRes = await _dispatcher.SendCommandAsync("Target.createTarget", new { url = "about:blank" });

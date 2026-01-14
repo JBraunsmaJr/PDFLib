@@ -4,6 +4,10 @@ using SkiaSharp;
 
 namespace PDFLib;
 
+/// <summary>
+/// Represents a PDF image object (/XObject with /Subtype /Image).
+/// Supports loading from stream or file, and basic ZLib compression.
+/// </summary>
 public class PdfImage : PdfObject, IDisposable
 {
     private readonly byte[]? _data;
@@ -12,6 +16,13 @@ public class PdfImage : PdfObject, IDisposable
     private readonly string _filter;
     private readonly bool _isTempFile;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="PdfImage"/> class with raw data.
+    /// </summary>
+    /// <param name="width">The width of the image in pixels.</param>
+    /// <param name="height">The height of the image in pixels.</param>
+    /// <param name="data">The raw image data.</param>
+    /// <param name="filter">The PDF filter used for the data (e.g., "/FlateDecode").</param>
     public PdfImage(int width, int height, byte[] data, string filter = "/FlateDecode")
     {
         Width = width;
@@ -34,9 +45,19 @@ public class PdfImage : PdfObject, IDisposable
         InitializeDict();
     }
 
+    /// <summary>
+    /// Gets the width of the image.
+    /// </summary>
     public int Width { get; }
+
+    /// <summary>
+    /// Gets the height of the image.
+    /// </summary>
     public int Height { get; }
 
+    /// <summary>
+    /// Disposes the image resources, including deleting temporary files if applicable.
+    /// </summary>
     public void Dispose()
     {
         if (!_isTempFile || _filePath is null || !File.Exists(_filePath)) return;
@@ -63,6 +84,10 @@ public class PdfImage : PdfObject, IDisposable
             _dict.Add("/Filter", new PdfName(_filter));
     }
 
+    /// <summary>
+    /// Writes the image object to the specified binary writer.
+    /// </summary>
+    /// <param name="writer">The writer to use.</param>
     public override void WriteTo(BinaryWriter writer)
     {
         if (_data != null)
@@ -88,6 +113,10 @@ public class PdfImage : PdfObject, IDisposable
         }
     }
 
+    /// <summary>
+    /// Returns the raw byte representation of the image object.
+    /// </summary>
+    /// <returns>A byte array representing the image object.</returns>
     public override byte[] GetBytes()
     {
         using var ms = new MemoryStream();
@@ -96,12 +125,23 @@ public class PdfImage : PdfObject, IDisposable
         return ms.ToArray();
     }
 
+    /// <summary>
+    /// Creates a <see cref="PdfImage"/> from a file.
+    /// </summary>
+    /// <param name="filePath">The path to the image file.</param>
+    /// <returns>A new <see cref="PdfImage"/> instance.</returns>
     public static PdfImage FromFile(string filePath)
     {
         using var fs = File.OpenRead(filePath);
         return FromStream(fs);
     }
 
+    /// <summary>
+    /// Creates a <see cref="PdfImage"/> from a stream.
+    /// </summary>
+    /// <param name="stream">The stream containing the image data.</param>
+    /// <returns>A new <see cref="PdfImage"/> instance.</returns>
+    /// <exception cref="Exception">Thrown if the image cannot be decoded.</exception>
     public static PdfImage FromStream(Stream stream)
     {
         using var bitmap = SKBitmap.Decode(stream) ?? throw new Exception("Failed to load image from stream");
