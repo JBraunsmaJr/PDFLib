@@ -80,7 +80,7 @@ public class CdpPage : IAsyncDisposable
         {
             expression = script,
             returnByValue = true
-        });
+        }, _sessionId);
 
         if (!response.TryGetProperty("result", out var result) || !result.TryGetProperty("value", out var value))
             return new List<SignatureZone>();
