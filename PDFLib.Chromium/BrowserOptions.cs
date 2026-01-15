@@ -38,7 +38,7 @@ public class BrowserOptions
     /// <summary>
     /// Gets or sets the maximum time to wait for the page to be ready (in milliseconds). Set to null for no timeout.
     /// </summary>
-    public int? WaitTimeoutMs { get; set; } = 10000;
+    public int? WaitTimeoutMs { get; set; } = TimeSpan.FromSeconds(10).Milliseconds;
 }
 
 /// <summary>
@@ -53,7 +53,8 @@ public enum WaitStrategy
     Load = 1,
 
     /// <summary>
-    /// Wait until there are no more than 2 network connections for at least 500ms.
+    /// Wait until there are no more than 2 network connections for at least 500ms. This is from
+    /// Chromium itself, not the library
     /// </summary>
     NetworkIdle = 2,
 
