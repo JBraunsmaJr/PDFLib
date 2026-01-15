@@ -7,10 +7,16 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace PDFLib;
 
+/// <summary>
+/// Provides a renderer for converting Blazor components into PDF documents.
+/// </summary>
 public class PdfRenderer
 {
     private readonly IServiceProvider _serviceProvider;
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="PdfRenderer"/> class with default services.
+    /// </summary>
     public PdfRenderer()
     {
         var services = new ServiceCollection();
@@ -18,6 +24,13 @@ public class PdfRenderer
         _serviceProvider = services.BuildServiceProvider();
     }
 
+    /// <summary>
+    /// Renders a Blazor component to the specified <see cref="PdfDocument"/>.
+    /// </summary>
+    /// <typeparam name="TComponent">The type of the Blazor component to render.</typeparam>
+    /// <param name="doc">The destination PDF document.</param>
+    /// <param name="parameters">The parameters to pass to the component.</param>
+    /// <returns>A task that represents the asynchronous rendering operation.</returns>
     public async Task RenderToDocumentAsync<TComponent>(PdfDocument doc, IDictionary<string, object?> parameters)
         where TComponent : IComponent
     {

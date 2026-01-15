@@ -1,56 +1,65 @@
 namespace PDFLib.Chromium;
 
+/// <summary>
+/// Options for configuring the <see cref="ChromiumBrowser"/>.
+/// </summary>
 public class BrowserOptions
 {
     /// <summary>
-    ///     How many PDFs can be rendered at the same time. Defaults to Environment.ProcessorCount
+    /// Gets or sets how many PDFs can be rendered at the same time. Defaults to <see cref="Environment.ProcessorCount"/>.
     /// </summary>
     public int MaxConcurrentRenders { get; set; } = Environment.ProcessorCount;
 
     /// <summary>
-    ///     Threshold of system memory (in MB) at which we should pause new renders to
-    ///     prevent the Linux OOM from nuking the process
+    /// Gets or sets the threshold of system memory (in MB) at which to pause new renders to prevent OOM.
     /// </summary>
     public long MemoryThresholdMb { get; set; } = 1024;
 
+    /// <summary>
+    /// Gets or sets the path to the Chromium binary. Defaults to "chrome-shell".
+    /// </summary>
     public string BinaryPath { get; set; } = "chrome-shell";
 
     /// <summary>
-    ///     Strategy to use when waiting for the page to be ready for rendering.
+    /// Gets or sets the strategy to use when waiting for the page to be ready for rendering.
     /// </summary>
     public WaitStrategy WaitStrategy { get; set; } = WaitStrategy.Load;
 
     /// <summary>
-    ///     If WaitStrategy is JavascriptVariable, this is the name of the variable to check.
+    /// Gets or sets the name of the JavaScript variable to check if <see cref="WaitStrategy"/> is <see cref="WaitStrategy.JavascriptVariable"/>.
     /// </summary>
     public string? WaitVariable { get; set; }
 
     /// <summary>
-    ///     If WaitStrategy is JavascriptVariable, this is the expected value of the variable.
+    /// Gets or sets the expected value of the JavaScript variable if <see cref="WaitStrategy"/> is <see cref="WaitStrategy.JavascriptVariable"/>.
     /// </summary>
     public string? WaitVariableValue { get; set; }
 
     /// <summary>
-    ///     Maximum time to wait for the page to be ready (in milliseconds). Set to null for no timeout.
+    /// Gets or sets the maximum time to wait for the page to be ready (in milliseconds). Set to null for no timeout.
     /// </summary>
-    public int? WaitTimeoutMs { get; set; } = 10000;
+    public int? WaitTimeoutMs { get; set; } = TimeSpan.FromSeconds(10).Milliseconds;
 }
 
+/// <summary>
+/// Specifies strategies for waiting for a page to be ready for rendering.
+/// </summary>
 [Flags]
 public enum WaitStrategy
 {
     /// <summary>
-    ///     Wait for document.readyState == 'complete'
+    /// Wait for document.readyState == 'complete'.
     /// </summary>
     Load = 1,
 
     /// <summary>
-    ///     Wait until there are no more than 2 network connections for at least 500ms.
+    /// Wait until there are no more than 2 network connections for at least 500ms. This is from
+    /// Chromium itself, not the library
     /// </summary>
     NetworkIdle = 2,
 
     /// <summary>
-    ///     Wait for a specific javascript variable to equal a specific value.
+    /// Wait for a specific JavaScript variable to equal a specific value.
     /// </summary>
     JavascriptVariable = 4
 }

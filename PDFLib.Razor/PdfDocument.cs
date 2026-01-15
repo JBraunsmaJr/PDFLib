@@ -6,6 +6,9 @@ using PDFLib.Models;
 
 namespace PDFLib;
 
+/// <summary>
+/// Represents a PDF document and provides methods to build it, including adding pages, objects, and digital signatures.
+/// </summary>
 public class PdfDocument : IDisposable
 {
     private readonly PdfDictionary _catalog = new();
@@ -24,6 +27,9 @@ public class PdfDocument : IDisposable
     private Stream? _outputStream;
     private BinaryWriter? _writer;
 
+    /// <summary>
+    /// Disposes the document resources, including the underlying writer.
+    /// </summary>
     public void Dispose()
     {
         try
@@ -37,14 +43,14 @@ public class PdfDocument : IDisposable
     }
 
     /// <summary>
-    ///     Adds a signature to the document. Associates the signature to a unique name <paramref name="name" />
+    /// Adds a digital signature to the document.
     /// </summary>
-    /// <param name="name">Unique name for signature</param>
-    /// <param name="certificate">The certificate itself in which the signature will be created from.</param>
-    /// <param name="x">X coordinate in which the visual signature should appear</param>
-    /// <param name="y">Y coordinate in which the visual signature should appear</param>
-    /// <param name="width">Width of signature block</param>
-    /// <param name="height">Height of signature block</param>
+    /// <param name="name">Unique name for the signature field.</param>
+    /// <param name="certificate">The certificate to use for signing.</param>
+    /// <param name="x">The X coordinate for the visual signature (optional).</param>
+    /// <param name="y">The Y coordinate for the visual signature (optional).</param>
+    /// <param name="width">The width of the signature block (optional).</param>
+    /// <param name="height">The height of the signature block (optional).</param>
     public void AddSignature(string name, X509Certificate2 certificate, int? x = null, int? y = null, int? width = null,
         int? height = null)
     {
@@ -56,13 +62,13 @@ public class PdfDocument : IDisposable
     }
 
     /// <summary>
-    ///     Render signature associated with <paramref name="name" /> at given coordinates, with given dimensions.
+    /// Sets the visual appearance of a signature field.
     /// </summary>
-    /// <param name="name">Unique name of signature that's already been registered</param>
-    /// <param name="x">X coordinate of signature block</param>
-    /// <param name="y">Y coordinate of signature block</param>
-    /// <param name="width">Width of signature block</param>
-    /// <param name="height">Height of signature block</param>
+    /// <param name="name">Unique name of the signature field.</param>
+    /// <param name="x">The X coordinate.</param>
+    /// <param name="y">The Y coordinate.</param>
+    /// <param name="width">The width.</param>
+    /// <param name="height">The height.</param>
     public void SetSignatureAppearance(string name, int x, int y, int width, int height)
     {
         if (!_signatures.TryGetValue(name, out var data)) return;
@@ -99,6 +105,10 @@ public class PdfDocument : IDisposable
         }
     }
 
+    /// <summary>
+    /// Initializes the document and prepares the output stream for writing.
+    /// </summary>
+    /// <param name="outputStream">The stream to write the PDF to.</param>
     public void Begin(Stream outputStream)
     {
         _outputStream = outputStream;
@@ -158,6 +168,11 @@ public class PdfDocument : IDisposable
         return _nextId++;
     }
 
+    /// <summary>
+    /// Adds a new page to the document.
+    /// </summary>
+    /// <returns>The newly created <see cref="PdfPage"/>.</returns>
+    /// <exception cref="InvalidOperationException">Thrown if Begin() hasn't been called.</exception>
     public PdfPage AddPage()
     {
         if (!_isStreaming) throw new InvalidOperationException("Call Begin() first");
@@ -170,6 +185,11 @@ public class PdfDocument : IDisposable
         return page;
     }
 
+    /// <summary>
+    /// Adds a previously defined signature field to a specific page.
+    /// </summary>
+    /// <param name="page">The page to add the signature field to.</param>
+    /// <param name="signatureName">The unique name of the signature field.</param>
     public void AddSignatureToPage(PdfPage page, string signatureName)
     {
         if (_signatureFields.TryGetValue(signatureName, out var sigField) &&
@@ -201,6 +221,11 @@ public class PdfDocument : IDisposable
         }
     }
 
+    /// <summary>
+    /// Registers an indirect object in the document.
+    /// </summary>
+    /// <param name="obj">The PDF object to register.</param>
+    /// <returns>The object ID assigned to the object.</returns>
     public int RegisterObject(PdfObject obj)
     {
         obj.ObjectId = AssignId();
@@ -211,6 +236,12 @@ public class PdfDocument : IDisposable
         return obj.ObjectId.Value;
     }
 
+    /// <summary>
+    /// Writes a PDF object to the output stream.
+    /// </summary>
+    /// <param name="obj">The PDF object to write.</param>
+    /// <exception cref="InvalidOperationException">Thrown if document is not in streaming mode.</exception>
+    /// <exception cref="ArgumentException">Thrown if object doesn't have an ID.</exception>
     public void WriteObject(PdfObject obj)
     {
         if (!_isStreaming || _writer == null || _outputStream == null)
@@ -225,6 +256,9 @@ public class PdfDocument : IDisposable
         _writer.Write(Encoding.ASCII.GetBytes("\nendobj\n"));
     }
 
+    /// <summary>
+    /// Closes the document and writes the cross-reference table and trailer.
+    /// </summary>
     public void Close()
     {
         if (!_isStreaming || _writer == null || _outputStream == null) return;
@@ -348,6 +382,10 @@ public class PdfDocument : IDisposable
         _outputStream.Write(hexBytes, 0, hexBytes.Length);
     }
 
+    /// <summary>
+    /// Saves the document to the specified file path.
+    /// </summary>
+    /// <param name="filePath">The path to save the PDF to.</param>
     public void Save(string filePath)
     {
         using var fs = new FileStream(filePath, FileMode.Create);

@@ -120,19 +120,19 @@ Perf branch (benchmarked on a separate machine):
 | Dink   | x3-large-sample.html | 3,564.62 ms | 177.177 ms | 499.731 ms | 3,355.50 ms |  1457.91 KB |
 | PdfLib | x3-large-sample.html | 3,451.96 ms | 134.999 ms | 398.049 ms | 3,256.12 ms |  15780.7 KB |
 
-We finally reached a somewhat margin of error here where the library out performs DinkToHtml for smaller workloads, and is about the same
-for larger ones. For reference, x3-large-sample.html equates to 420 pages. 
+More Perf: - I've been a dingus and using memory stream in the benchmark which is included as part of our memory allocations.
+The intent is for the library to be streamed into its destination so that we can avoid the memory allocations. 
 
-| Method | FileName             | Mean        | Error     | StdDev    | Median      | Allocated   |
-|------- |--------------------- |------------:|----------:|----------:|------------:|------------:|
-| Dink   | large-sample.html    | 1,006.55 ms |  9.404 ms |  8.337 ms | 1,005.49 ms |   636.86 KB |                                                                                                       
-| PdfLib | large-sample.html    |   834.61 ms |  7.265 ms |  6.796 ms |   834.52 ms |  9098.34 KB |
-| Dink   | sample.html          |   247.00 ms |  4.933 ms | 10.512 ms |   249.18 ms |   119.42 KB |
-| PdfLib | sample.html          |    55.03 ms |  3.413 ms |  9.848 ms |    51.38 ms |    86.29 KB |
-| Dink   | x2-large-sample.html | 1,805.79 ms |  9.329 ms |  8.726 ms | 1,805.88 ms |  1166.98 KB |
-| PdfLib | x2-large-sample.html | 1,716.48 ms | 11.120 ms |  9.857 ms | 1,717.10 ms | 16389.27 KB |
-| Dink   | x3-large-sample.html | 2,599.59 ms |  9.782 ms |  9.150 ms | 2,601.43 ms |  1698.45 KB |
-| PdfLib | x3-large-sample.html | 2,833.06 ms | 11.097 ms |  9.267 ms | 2,833.30 ms | 16514.05 KB |
+| Method | FileName             | Mean        | Error     | StdDev    | Median      | Allocated  |
+|------- |--------------------- |------------:|----------:|----------:|------------:|-----------:|
+| Dink   | large-sample.html    | 1,010.58 ms |  9.862 ms |  8.235 ms | 1,007.34 ms |  636.86 KB |                                                                                                        
+| PdfLib | large-sample.html    |   845.99 ms |  8.489 ms |  7.089 ms |   845.25 ms |  138.13 KB |
+| Dink   | sample.html          |   250.86 ms |  4.952 ms |  8.543 ms |   253.14 ms |  119.42 KB |
+| PdfLib | sample.html          |    52.36 ms |  2.575 ms |  7.591 ms |    49.46 ms |   19.48 KB |
+| Dink   | x2-large-sample.html | 1,794.39 ms | 11.802 ms |  9.855 ms | 1,793.57 ms | 1166.98 KB |
+| PdfLib | x2-large-sample.html | 1,712.90 ms | 15.502 ms | 12.945 ms | 1,708.03 ms |  261.83 KB |
+| Dink   | x3-large-sample.html | 2,572.94 ms |  7.158 ms |  6.346 ms | 2,573.16 ms | 1698.45 KB |
+| PdfLib | x3-large-sample.html | 2,806.93 ms | 23.164 ms | 21.668 ms | 2,801.68 ms |  385.69 KB |
 
 For about 840 pages (simply doubled the x3-large.sample.html file), we achieve the following:
 

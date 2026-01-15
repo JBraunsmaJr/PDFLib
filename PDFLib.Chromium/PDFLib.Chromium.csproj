@@ -6,12 +6,28 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
     </PropertyGroup>
 
     <ItemGroup>
         <None Remove="sample.html"/>
         <None Remove="samples\js-variable-wait.html"/>
         <None Remove="samples\network-wait.html"/>
+    </ItemGroup>
+
+    <ItemGroup>
+      <None Remove="FindSignatureAreas.js" />
+      <AdditionalFiles Include="FindSignatureAreas.js">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </AdditionalFiles>
+    </ItemGroup>
+
+    <ItemGroup>
+      <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.2" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\PDFLib.Razor\PDFLib.Razor.csproj" />
     </ItemGroup>
 
 </Project>

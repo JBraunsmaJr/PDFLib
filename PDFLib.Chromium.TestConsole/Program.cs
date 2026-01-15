@@ -1,4 +1,6 @@
 ﻿using System.Diagnostics;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using PDFLib.Chromium;
 
 const string outputDirectory = "./out";
@@ -6,6 +8,82 @@ if (!Directory.Exists(outputDirectory)) Directory.CreateDirectory(outputDirector
 
 await RunStandardSamples();
 await RunWaitStrategySamples();
+await RunSignatureSamples();
+
+async Task RunSignatureSamples()
+{
+    Console.WriteLine("\n--- Running Signature Samples ---");
+    using var browser = new ChromiumBrowser();
+    await browser.StartAsync(new BrowserOptions());
+
+    var file = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "samples", "signature-test.html");
+    var html = await File.ReadAllTextAsync(file);
+    
+    var info = new FileInfo(file);
+    var fullPath = Path.Combine(outputDirectory, info.Name.Replace(".html", ".pdf"));
+    if (File.Exists(fullPath)) File.Delete(fullPath);
+
+    Console.WriteLine($"Processing {Path.GetFileName(file)} with Signature Zones");
+
+    await using var page = await browser.CreatePageAsync();
+    await page.SetContentAsync(html);
+    
+    var signatureData = new Dictionary<string, (string name, string date)>();
+    signatureData["signature-area-1"] = ("Test Signer 1", DateTime.Now.ToString("yyyy.MM.dd HH:mm:ss"));
+    signatureData["signature-area-2"] = ("Test Signer 2", DateTime.Now.ToString("yyyy.MM.dd HH:mm:ss"));
+
+    using var ms = new MemoryStream();
+    var zones = await page.PrintToPdfAsync(ms, true, signatureData);
+    var pdfBytes = ms.ToArray();
+
+    Console.WriteLine($"Found {zones.Count} signature zones:");
+    foreach (var zone in zones)
+    {
+        var (x, y, w, h, p) = zone.ToPdfCoordinates();
+        Console.WriteLine($"  - {zone.Id}: Page {p}, Pos ({x:F1}, {y:F1}), Size {w:F1}x{h:F1}");
+    }
+
+    if (zones.Count > 0)
+    {
+        Console.WriteLine("Signing PDF with selective certificates...");
+        var signer = new PdfSigner(pdfBytes, zones);
+        
+        // Create test certificates
+        using var rsa1 = RSA.Create(2048);
+        var request1 = new CertificateRequest("cn=Test Signer 1", rsa1, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        using var cert1 = request1.CreateSelfSigned(DateTimeOffset.Now, DateTimeOffset.Now.AddYears(1));
+
+        using var rsa2 = RSA.Create(2048);
+        var request2 = new CertificateRequest("cn=Test Signer 2", rsa2, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        using var cert2 = request2.CreateSelfSigned(DateTimeOffset.Now, DateTimeOffset.Now.AddYears(1));
+
+        // Assign cert1 to the first zone
+        if (zones.Count > 0)
+        {
+            signer.AddCertificate(cert1, zones[0].Id);
+            Console.WriteLine($"  - Assigned cert1 to {zones[0].Id}");
+        }
+
+        // Assign cert2 to the second zone (if it exists)
+        if (zones.Count > 1)
+        {
+            signer.AddCertificate(cert2, zones[1].Id);
+            Console.WriteLine($"  - Assigned cert2 to {zones[1].Id}");
+        }
+
+        // The remaining zones (if any) will stay unsigned
+        if (zones.Count > 2)
+        {
+            Console.WriteLine($"  - Remaining {zones.Count - 2} zones will stay UNSIGNED");
+        }
+        
+        pdfBytes = await signer.SignAsync();
+    }
+
+    await File.WriteAllBytesAsync(fullPath, pdfBytes);
+    
+    Console.WriteLine($"Output: {fullPath} | Size: {new FileInfo(fullPath).Length} bytes");
+}
 
 async Task RunStandardSamples()
 {

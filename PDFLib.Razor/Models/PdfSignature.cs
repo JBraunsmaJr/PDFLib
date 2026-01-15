@@ -1,10 +1,17 @@
 ﻿namespace PDFLib.Models;
 
+/// <summary>
+/// Represents a PDF signature dictionary (/Sig) with placeholders for the actual digital signature and byte range.
+/// </summary>
 public class PdfSignature : PdfObject
 {
     private readonly int _contentsSize;
     private readonly PdfDictionary _dict = new();
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="PdfSignature"/> class.
+    /// </summary>
+    /// <param name="contentsSize">The size in bytes to reserve for the digital signature.</param>
     public PdfSignature(int contentsSize = 4096)
     {
         _contentsSize = contentsSize;
@@ -14,9 +21,20 @@ public class PdfSignature : PdfObject
         _dict.Add("/M", new PdfString($"D:{DateTime.Now:yyyyMMddHHmmss}Z"));
     }
 
+    /// <summary>
+    /// Gets the absolute offset in the output stream where the /Contents (signature) placeholder begins.
+    /// </summary>
     public long ContentsOffset { get; private set; }
+
+    /// <summary>
+    /// Gets the absolute offset in the output stream where the /ByteRange placeholder begins.
+    /// </summary>
     public long ByteRangeOffset { get; private set; }
 
+    /// <summary>
+    /// Writes the signature dictionary to the specified binary writer and captures offsets for signing.
+    /// </summary>
+    /// <param name="writer">The writer to use.</param>
     public override void WriteTo(BinaryWriter writer)
     {
         _dict.Add("/Contents", new PdfPlaceholder(_contentsSize));
@@ -48,6 +66,10 @@ public class PdfSignature : PdfObject
         writer.Write(ToAscii(" >>"));
     }
 
+    /// <summary>
+    /// Returns the raw byte representation of the signature dictionary.
+    /// </summary>
+    /// <returns>A byte array representing the signature dictionary.</returns>
     public override byte[] GetBytes()
     {
         using var ms = new MemoryStream();

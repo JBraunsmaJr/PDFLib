@@ -1,19 +1,30 @@
 ﻿namespace PDFLib.Models;
 
 /// <summary>
-///     Represents names such as /Type, /Page, /Font
+/// Represents a PDF name object (e.g., /Type, /Page, /Font).
 /// </summary>
 public class PdfName : PdfObject
 {
-    private readonly string _name;
+    /// <summary>
+    /// Gets the name string, including the leading slash.
+    /// </summary>
+    public string Name { get; }
 
+    /// <summary>
+    /// Initializes a new instance of the <see cref="PdfName"/> class.
+    /// </summary>
+    /// <param name="name">The name string. A leading slash will be added if missing.</param>
     public PdfName(string name)
     {
-        _name = name.StartsWith("/") ? name : "/" + name;
+        Name = name.StartsWith("/") ? name : "/" + name;
     }
 
+    /// <summary>
+    /// Returns the raw byte representation of the name.
+    /// </summary>
+    /// <returns>A byte array representing the name.</returns>
     public override byte[] GetBytes()
     {
-        return ToAscii(_name);
+        return ToAscii(Name);
     }
 }

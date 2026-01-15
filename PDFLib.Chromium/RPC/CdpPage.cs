@@ -2,11 +2,12 @@ using System.Buffers;
 using System.Buffers.Text;
 using System.Collections.Concurrent;
 using System.Text.Json;
+using JsonSerializer = System.Text.Json.JsonSerializer;
 
 namespace PDFLib.Chromium.RPC;
 
 /// <summary>
-/// Chrome DevTools Protocol (CDP) page for interacting with a specific browser tab.
+/// Chrome DevTools Protocol (CDP) page for interacting with a specific browser tab and generating PDFs.
 /// </summary>
 public class CdpPage : IAsyncDisposable
 {
@@ -19,7 +20,15 @@ public class CdpPage : IAsyncDisposable
     private string? _cachedFrameId;
     private bool _networkEnabled;
     private bool _pageEnabled;
-
+    
+    /// <summary>
+    /// Initializes a new instance of the <see cref="CdpPage"/> class.
+    /// </summary>
+    /// <param name="dispatcher">The CDP dispatcher.</param>
+    /// <param name="sessionId">The CDP session ID.</param>
+    /// <param name="targetId">The CDP target ID.</param>
+    /// <param name="semaphore">The semaphore for controlling concurrent renders.</param>
+    /// <param name="options">The browser options.</param>
     public CdpPage(CdpDispatcher dispatcher, string sessionId, string targetId, SemaphoreSlim semaphore,
         BrowserOptions options)
     {
@@ -30,6 +39,10 @@ public class CdpPage : IAsyncDisposable
         _semaphore = semaphore;
     }
 
+    /// <summary>
+    /// Closes the page and associated target.
+    /// </summary>
+    /// <returns>A task that represents the asynchronous operation.</returns>
     public async ValueTask DisposeAsync()
     {
         try
@@ -41,27 +54,81 @@ public class CdpPage : IAsyncDisposable
         }
     }
 
-    /// <summary>
-    /// Combines <see cref="SetContentAsync"/> and <see cref="PrintToPdfAsync(string,System.IO.Stream,System.Threading.CancellationToken)"/>
-    /// </summary>
-    /// <param name="html">HTML to convert into PDF</param>
-    /// <param name="destinationStream">Where to stream PDF</param>
-    /// <param name="cancellationToken"></param>
-    public async Task PrintToPdfAsync(string html, Stream destinationStream,
-        CancellationToken cancellationToken = default)
+    private string FindSignatureAreasScript
     {
-        await SetContentAsync(html);
-        await PrintToPdfAsync(destinationStream, cancellationToken);
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(field)) return field;
+            field = File.ReadAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "FindSignatureAreas.js"));
+            return field;
+        }
     }
     
     /// <summary>
-    /// Assumes the provided HTML content is valid and sets it as the page's content. 
+    /// Leverages the Chrome DevTools Protocol to find signature zones in the current page's DOM.
     /// </summary>
-    /// <param name="destinationStream">Where to stream PDF</param>
-    /// <param name="cancellationToken"></param>
-    /// <exception cref="Exception"></exception>
-    public async Task PrintToPdfAsync(Stream destinationStream, CancellationToken cancellationToken = default)
+    /// <param name="signatureData">Optional dictionary of signature data (name, date) to inject into the DOM.</param>
+    /// <returns>A list of detected <see cref="SignatureZone"/> objects.</returns>
+    public async Task<List<SignatureZone>> GetSignatureZonesAsync(Dictionary<string, (string name, string date)>? signatureData = null)
     {
+        var script = FindSignatureAreasScript;
+
+        object? arg = null;
+        if (signatureData != null)
+        {
+            arg = signatureData.ToDictionary(k => k.Key, v => new { name = v.Value.name, date = v.Value.date });
+        }
+
+        var res = await _dispatcher.SendCommandAsync("Runtime.evaluate", new
+        {
+            expression = $"({script})({JsonSerializer.Serialize(arg)})",
+            returnByValue = true,
+            awaitPromise = true
+        }, _sessionId);
+
+        if (!res.TryGetProperty("result", out var result) || !result.TryGetProperty("value", out var value))
+            return new List<SignatureZone>();
+        
+        var options = new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true
+        };
+
+        var zones = JsonSerializer.Deserialize<List<SignatureZone>>(value.GetRawText(), options);
+        
+        return zones ?? new List<SignatureZone>();
+    }
+
+    /// <summary>
+    /// Sets the HTML content and prints the page to a PDF stream.
+    /// </summary>
+    /// <param name="html">The HTML to convert into PDF.</param>
+    /// <param name="destinationStream">The stream where the PDF will be written.</param>
+    /// <param name="includeZones">Whether to fetch and return signature zones.</param>
+    /// <param name="signatureData">Optional dictionary of signature data to inject into the DOM before printing.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A list of signature zones found in the document.</returns>
+    public async Task<List<SignatureZone>> PrintToPdfAsync(string html, Stream destinationStream,
+        bool includeZones = true, Dictionary<string, (string name, string date)>? signatureData = null,
+        CancellationToken cancellationToken = default)
+    {
+        await SetContentAsync(html);
+        return await PrintToPdfAsync(destinationStream, includeZones, signatureData, cancellationToken);
+    }
+    
+    /// <summary>
+    /// Prints the current page content to a PDF stream.
+    /// </summary>
+    /// <param name="destinationStream">The stream where the PDF will be written.</param>
+    /// <param name="includeZones">Whether to fetch and return signature zones.</param>
+    /// <param name="signatureData">Optional dictionary of signature data to inject into the DOM before printing.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A list of signature zones found in the document.</returns>
+    /// <exception cref="Exception">Thrown if PDF generation fails.</exception>
+    public async Task<List<SignatureZone>> PrintToPdfAsync(Stream destinationStream, bool includeZones = false, Dictionary<string, (string name, string date)>? signatureData = null, CancellationToken cancellationToken = default)
+    {
+        List<SignatureZone> zones = new();
+        
         await _semaphore.WaitAsync(cancellationToken);
 
         // 1MB buffer handles 256KB chunks comfortably
@@ -69,6 +136,11 @@ public class CdpPage : IAsyncDisposable
 
         try
         {
+            if (includeZones || signatureData != null)
+            {
+                zones = await GetSignatureZonesAsync(signatureData);
+            }
+            
             var result = await _dispatcher.SendCommandAsync("Page.printToPDF", new
             {
                 printBackground = true,
@@ -87,7 +159,7 @@ public class CdpPage : IAsyncDisposable
                 if (!result.TryGetProperty("data", out var dataProp)) throw new Exception("No handle or data");
                 if (dataProp.ValueKind == JsonValueKind.String && dataProp.TryGetBytesFromBase64(out var bytes))
                     await destinationStream.WriteAsync(bytes, cancellationToken);
-                return;
+                return zones;
             }
 
             try
@@ -114,6 +186,7 @@ public class CdpPage : IAsyncDisposable
                 }
 
                 await destinationStream.FlushAsync(cancellationToken);
+                return zones;
             }
             finally
             {
@@ -168,6 +241,26 @@ public class CdpPage : IAsyncDisposable
             _sessionId);
         await WaitForConditionsAsync(DateTime.UtcNow,
             _options.WaitTimeoutMs.HasValue ? TimeSpan.FromMilliseconds(_options.WaitTimeoutMs.Value) : null);
+    }
+
+    /// <summary>
+    /// Executes a JavaScript expression and returns the result as a JsonElement.
+    /// </summary>
+    public async Task<JsonElement> EvaluateAsync(string expression)
+    {
+        var res = await _dispatcher.SendCommandAsync("Runtime.evaluate", new
+        {
+            expression,
+            returnByValue = true,
+            awaitPromise = true
+        }, _sessionId);
+
+        if (res.TryGetProperty("exceptionDetails", out var exception))
+        {
+            throw new Exception($"JS Exception: {exception.GetRawText()}");
+        }
+
+        return res.GetProperty("result");
     }
     
     /// <summary>

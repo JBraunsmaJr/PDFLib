@@ -52,19 +52,22 @@ RUN curl -SL "$HEADLESS_CHROMIUM_DOWNLOAD_URL" -o /tmp/chromium.zip && \
 RUN chmod +x /usr/local/bin/chrome-shell
 RUN chrome-shell --version     
 
-RUN mkdir -p /out && chmod 777 -R /out
+# RUN mkdir -p /out && chmod 777 -R /out
 
-USER $APP_UID
+# USER $APP_UID
 
 WORKDIR /app
 
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
-COPY ["PDFLib.Chromium.TestConsole..csproj", "PDFLib.Chromium.TestConsole/PDFLib.Chromium.TestConsole.csproj"]
+COPY ["PDFLib.Chromium.TestConsole/PDFLib.Chromium.TestConsole.csproj", "PDFLib.Chromium.TestConsole/"]
+COPY ["PDFLib.Chromium/PDFLib.Chromium.csproj", "PDFLib.Chromium/"]
+COPY ["PDFLib.Razor/PDFLib.Razor.csproj", "PDFLib.Razor/"]
 RUN dotnet restore "PDFLib.Chromium.TestConsole/PDFLib.Chromium.TestConsole.csproj"
-WORKDIR "/src/PDFLib.Chromium.TestConsole"
+WORKDIR "/src"
 COPY . .
+WORKDIR "/src/PDFLib.Chromium.TestConsole"
 RUN dotnet build "./PDFLib.Chromium.TestConsole.csproj" -c $BUILD_CONFIGURATION -o /app/build
 
 FROM build AS publish

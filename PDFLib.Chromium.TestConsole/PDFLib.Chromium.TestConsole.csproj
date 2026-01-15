@@ -20,6 +20,10 @@
         <AdditionalFiles Include="samples\x3-large-sample.html">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </AdditionalFiles>
+        <None Remove="samples\signature-test.html" />
+        <AdditionalFiles Include="samples\signature-test.html">
+          <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </AdditionalFiles>
     </ItemGroup>
 
     <ItemGroup>
