@@ -36,6 +36,13 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Articles", "Articles", "{65
 		articles\toc.yml = articles\toc.yml
 	EndProjectSection
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Assets", "Assets", "{774FFDE9-F744-4857-B815-9BDE44291919}"
+	ProjectSection(SolutionItems) = preProject
+		assets\performance-chart.png = assets\performance-chart.png
+		assets\comparisonchart.png = assets\comparisonchart.png
+		assets\benchmarks.png = assets\benchmarks.png
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
