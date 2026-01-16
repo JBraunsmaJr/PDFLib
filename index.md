@@ -7,6 +7,13 @@ _layout: landing
 An open source PDF library using .NET which focuses on rendering PDFs from HTML/CSS, and optionally signing them with digital
 signatures.
 
+| File     | Page Count |
+|:---------|:----------:|
+| sample   |     2      |
+| medium   |    140     |
+| x2-large |    280     |
+| x3-large |    420     |
+
 ![Metrics Overview](assets/overview.png)
 
 ## The Journey:
