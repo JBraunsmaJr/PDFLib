@@ -3,3 +3,7 @@
 bin
 obj
 .pdf
+_site
+out
+api
+test-out

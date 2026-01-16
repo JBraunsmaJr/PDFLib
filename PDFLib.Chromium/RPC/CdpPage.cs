@@ -109,7 +109,7 @@ public class CdpPage : IAsyncDisposable
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>A list of signature zones found in the document.</returns>
     public async Task<List<SignatureZone>> PrintToPdfAsync(string html, Stream destinationStream,
-        bool includeZones = true, Dictionary<string, (string name, string date)>? signatureData = null,
+        bool includeZones = false, Dictionary<string, (string name, string date)>? signatureData = null,
         CancellationToken cancellationToken = default)
     {
         await SetContentAsync(html);

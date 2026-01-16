@@ -150,11 +150,10 @@ async Task RenderToPdf(ChromiumBrowser browser, string file, string html)
 
     var stopwatch = new Stopwatch();
     stopwatch.Start();
-
+    
     await using var outputPdf = File.Create(fullPath);
     await using var page = await browser.CreatePageAsync();
-    await page.SetContentAsync(html);
-    await page.PrintToPdfAsync(outputPdf);
+    await page.PrintToPdfAsync(html, outputPdf);
     await outputPdf.FlushAsync();
 
     stopwatch.Stop();

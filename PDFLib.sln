@@ -10,6 +10,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 	ProjectSection(SolutionItems) = preProject
 		compose.yaml = compose.yaml
 		Readme.md = Readme.md
+		docfx.json = docfx.json
+		index.md = index.md
+		toc.yml = toc.yml
+		.gitignore = .gitignore
 	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Benchmarks", "Benchmarks\Benchmarks.csproj", "{2404B137-4275-4CCD-842B-2A579E56B7E5}"
@@ -17,6 +21,20 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PDFLib.Chromium.TestConsole", "PDFLib.Chromium.TestConsole\PDFLib.Chromium.TestConsole.csproj", "{9F52F7B8-FC5C-4E79-BFF1-9E53EE322C4F}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Samples", "Samples", "{2D5F40D5-B4C2-4E20-9183-681FDE31DD49}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Docs", "Docs", "{D9DE7271-0C9E-4D10-A151-FAA1478C6673}"
+	ProjectSection(SolutionItems) = preProject
+		docs\introduction.md = docs\introduction.md
+		docs\getting-started.md = docs\getting-started.md
+		docs\toc.yml = docs\toc.yml
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Articles", "Articles", "{655B80DF-5858-45A0-BF2E-458BE85D7F0C}"
+	ProjectSection(SolutionItems) = preProject
+		articles\introduction.md = articles\introduction.md
+		articles\basic-usage.md = articles\basic-usage.md
+		articles\toc.yml = articles\toc.yml
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
