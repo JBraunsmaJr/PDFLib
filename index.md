@@ -7,6 +7,8 @@ _layout: landing
 An open source PDF library using .NET which focuses on rendering PDFs from HTML/CSS, and optionally signing them with digital
 signatures.
 
+[Metrics Overview](assets/overview.png)
+
 ## The Journey:
 
 This project started off as me being bored, a descent into madness. Was curious what it would take to create a PDF in C#. Quite the journey that
