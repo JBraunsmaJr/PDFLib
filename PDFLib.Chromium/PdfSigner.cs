@@ -252,10 +252,9 @@ public class PdfSigner
         }
 
         var xrefOffset = ms.Position;
-        // The startxref must point to the 'x' in 'xref'
-        // If we added a leading newline, we need to adjust the offset
+        // The startxref must point to the 'x' in 'xref'. Must adjust offset since we added newline
         writer.Write(Encoding.ASCII.GetBytes("\nxref\n"));
-        xrefOffset++; // Skip the '\n' if we added one 
+        xrefOffset++;
         
         var sortedIds = _offsets.Keys.OrderBy(k => k).ToList();
         // Standard xref: startId count
@@ -308,7 +307,7 @@ public class PdfSigner
 
         var signedBytes = ms.ToArray();
         
-         // The final step is to actually sign the PDf with the certificate
+         // The final step is to actually sign the PDF with the certificate
         foreach (var obj in _newObjects.OfType<PdfSignature>())
         {
             var zoneId = sigDictToZoneId[obj.ObjectId!.Value];
@@ -328,11 +327,11 @@ public class PdfSigner
     private void SignDocument(byte[] pdfBytes, PdfSignature signature, X509Certificate2 certificate)
     {
         var contentsStart = _offsets[signature.ObjectId!.Value] + GetContentsRelativeOffset(signature);
-        var contentsLength = 4096;
+        const int contentsLength = 4096;
 
         var part1Length = (int)contentsStart;
         var part2Start = (int)(contentsStart + contentsLength);
-        var part2Length = (int)(pdfBytes.Length - part2Start);
+        var part2Length = pdfBytes.Length - part2Start;
 
         var byteRange = $"[0 {part1Length} {part2Start} {part2Length}]";
         var byteRangeOffset = _offsets[signature.ObjectId!.Value] + GetByteRangeRelativeOffset(signature);
@@ -367,7 +366,7 @@ public class PdfSigner
     private long GetContentsRelativeOffset(PdfSignature sig)
     {
         // Estimate based on PdfSignature.WriteTo
-        // << /Type /Sig  /Filter /Adobe.PPKLite  /SubFilter /adbe.pkcs7.detached  /M (D:...)  /Contents 
+        // << /Type /Sig  /Filter /Adobe.PPKLite /SubFilter /adbe.pkcs7.detached  /M (D:...)  /Contents 
         using var ms = new MemoryStream();
         using var writer = new BinaryWriter(ms);
         sig.WriteTo(writer);
@@ -436,6 +435,7 @@ public class PdfSigner
         var text = Encoding.ASCII.GetString(_pdfBytes, trailerIndex, Math.Min(2048, _pdfBytes.Length - trailerIndex));
         
         var dict = new PdfDictionary();
+        
         // Extract Root
         var rootMatch = System.Text.RegularExpressions.Regex.Match(text, @"/Root\s+(\d+)\s+(\d+)\s+R");
         if (rootMatch.Success)
@@ -476,10 +476,8 @@ public class PdfSigner
         var marker = Encoding.ASCII.GetBytes($"\n{id} 0 obj");
         var startIndex = -1;
         
-        // Try with newline first
         startIndex = FindInBinary(_pdfBytes, marker);
         
-        // If not found, try without leading newline but ensuring it's at start of line or preceded by whitespace
         if (startIndex == -1)
         {
             var marker2 = Encoding.ASCII.GetBytes($"{id} 0 obj");
@@ -488,11 +486,8 @@ public class PdfSigner
         
         if (startIndex == -1) return "";
         
-        // Ensure we skip the leading newline if we used marker
-        if (_pdfBytes[startIndex] == '\n') startIndex++;
-        else if (_pdfBytes[startIndex] == '\r') startIndex++;
+        if (_pdfBytes[startIndex] == '\n' || _pdfBytes[startIndex] == '\r') startIndex++;
 
-        // Find endobj
         var endMarker = Encoding.ASCII.GetBytes("endobj");
         var endIndex = FindInBinary(_pdfBytes, endMarker, startIndex);
         
