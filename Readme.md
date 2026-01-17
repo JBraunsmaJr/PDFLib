@@ -1,5 +1,8 @@
 ﻿# PDF Lib
 
+[![NuGet version](https://img.shields.io/nuget/v/YourPackageName.svg)](https://www.nuget.org/packages/Badger.PDFLib.Chromium/)
+[![NuGet downloads](https://img.shields.io/nuget/dt/YourPackageName.svg)](https://www.nuget.org/packages/Badger.PDFLib.Chromium/)
+
 Join me in the descent into madness, as I explore the possibilities of PDF generation.
 
 Honestly, this was a product of me being bored and wondering what it would take
@@ -8,32 +11,7 @@ to generate a PDF without using external libraries. It... is... interesting to s
 As I progressed through the stages of wonder... I realized that there's some potential
 in it.
 
-This project is still in its early stages and is not yet ready for production use.
-
-Preface this with... it took until now for me to realize the benchmarks for PDF Lib was including the memory stream we were writing to (to simulate a user receiving their PDF). 
-That's why you'll see the significant reduction in memory. 
-
-![comparison chart](./assets/benchmarks.png)
-
-----
-
-Implemented "Targeted Parsing", by using Utf8JsonReader to find the result/error property first, then only parse that specific subtree instead of
-the entire message.
-
-Traded small allocations (High GC pressure) for larger upfront allocations (1MB buffer).
-
-A more predicatable working set with 1 MB scratch buffer.
-
-Learned that the u8 literals are specially handled by the JIT compiler. It embeds UTF-8 bytes in the assembly data section, 
-avoiding heap allocations. By using the predefined literals in variables we lost the fragmentation handling `ValueTextEquals` provides.
-
-Zero Allocation Routing:
-Changed `CdpDispatcher.ProcessMessage`, we use `GetCachedStringZeroAlloc` with `ValueTextEquals` to match event names directly
-against raw UTF-8 bytes. We previously allocated a string to check `_eventHandlers` dictionary keys. Now we maintain a small cache 
-list of known event names and use `reader.ValueTextEquals` to match raw bytes without allocation. This handles both contiguous and fragmented 
-data (from `PipeReader`) and correctly processes JSON escapes. For unknown message ID/metadata we `Skip()` entirely without allocating.
-
-----
+![comparison chart](./assets/overview.png)
 
 # Overview
 
