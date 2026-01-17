@@ -69,7 +69,7 @@ public class CdpPage : IAsyncDisposable
     /// </summary>
     /// <param name="signatureData">Optional dictionary of signature data (name, date) to inject into the DOM.</param>
     /// <returns>A list of detected <see cref="SignatureZone"/> objects.</returns>
-    public async Task<List<SignatureZone>> GetSignatureZonesAsync(Dictionary<string, (string name, string date)>? signatureData = null)
+    private async Task<List<SignatureZone>> GetSignatureZonesAsync(Dictionary<string, (string name, string date)>? signatureData = null)
     {
         var script = FindSignatureAreasScript;
 
@@ -104,28 +104,25 @@ public class CdpPage : IAsyncDisposable
     /// </summary>
     /// <param name="html">The HTML to convert into PDF.</param>
     /// <param name="destinationStream">The stream where the PDF will be written.</param>
-    /// <param name="includeZones">Whether to fetch and return signature zones.</param>
     /// <param name="signatureData">Optional dictionary of signature data to inject into the DOM before printing.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>A list of signature zones found in the document.</returns>
-    public async Task<List<SignatureZone>> PrintToPdfAsync(string html, Stream destinationStream,
-        bool includeZones = false, Dictionary<string, (string name, string date)>? signatureData = null,
+    public async Task<List<SignatureZone>> PrintToPdfAsync(string html, Stream destinationStream, Dictionary<string, (string name, string date)>? signatureData = null,
         CancellationToken cancellationToken = default)
     {
         await SetContentAsync(html);
-        return await PrintToPdfAsync(destinationStream, includeZones, signatureData, cancellationToken);
+        return await PrintToPdfAsync(destinationStream, signatureData, cancellationToken);
     }
-    
+
     /// <summary>
     /// Prints the current page content to a PDF stream.
     /// </summary>
     /// <param name="destinationStream">The stream where the PDF will be written.</param>
-    /// <param name="includeZones">Whether to fetch and return signature zones.</param>
     /// <param name="signatureData">Optional dictionary of signature data to inject into the DOM before printing.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>A list of signature zones found in the document.</returns>
     /// <exception cref="Exception">Thrown if PDF generation fails.</exception>
-    public async Task<List<SignatureZone>> PrintToPdfAsync(Stream destinationStream, bool includeZones = false, Dictionary<string, (string name, string date)>? signatureData = null, CancellationToken cancellationToken = default)
+    public async Task<List<SignatureZone>> PrintToPdfAsync(Stream destinationStream, Dictionary<string, (string name, string date)>? signatureData = null, CancellationToken cancellationToken = default)
     {
         List<SignatureZone> zones = new();
         
@@ -136,7 +133,7 @@ public class CdpPage : IAsyncDisposable
 
         try
         {
-            if (includeZones || signatureData != null)
+            if (signatureData is { Count: > 0 })
             {
                 zones = await GetSignatureZonesAsync(signatureData);
             }
@@ -255,12 +252,9 @@ public class CdpPage : IAsyncDisposable
             awaitPromise = true
         }, _sessionId);
 
-        if (res.TryGetProperty("exceptionDetails", out var exception))
-        {
-            throw new Exception($"JS Exception: {exception.GetRawText()}");
-        }
-
-        return res.GetProperty("result");
+        return res.TryGetProperty("exceptionDetails", out var exception) 
+            ? throw new Exception($"JS Exception: {exception.GetRawText()}") 
+            : res.GetProperty("result");
     }
     
     /// <summary>

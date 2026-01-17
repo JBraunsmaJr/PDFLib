@@ -33,7 +33,7 @@ async Task RunSignatureSamples()
     signatureData["signature-area-2"] = ("Test Signer 2", DateTime.Now.ToString("yyyy.MM.dd HH:mm:ss"));
 
     using var ms = new MemoryStream();
-    var zones = await page.PrintToPdfAsync(ms, true, signatureData);
+    var zones = await page.PrintToPdfAsync(ms, signatureData);
     var pdfBytes = ms.ToArray();
 
     Console.WriteLine($"Found {zones.Count} signature zones:");

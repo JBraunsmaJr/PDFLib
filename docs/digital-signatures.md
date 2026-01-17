@@ -15,6 +15,8 @@ In your HTML, define areas for signatures using a specific ID format: `signature
 
 ## Signing the PDF
 
+### Background
+
 Unfortunately, due to the PDF specification, one-pass operations aren't possible.
 
 When signing, we're telling the PDF where the hex-string will sit (e.g. "The signature starts at
@@ -24,6 +26,15 @@ hash. Looks something like `[0, 10500, 18500, 2000]`.
 To calculate the cryptographic hash, we need to know the **final size** of the PDF with exact offsets which we
 can't calculate until AFTER an initial pass.
 
+### Usage
+
+You must provide the signature zone data to the `PrintToPdfAsync` method. This is used for the visual representation.
+Using the Chromium Developer Protocol, we inject the signature zone data into a JavaScript function which updates the
+DOM. It also locates and returns all signature zones with their calculated positions so we can apply that data to the PDF.
+
+After the PDF is generated, we then use the PDFSigner to sign the PDF with the provided certificates. It's important
+to match the signature zone to the certificate.
+
 ```csharp
 using System.Security.Cryptography.X509Certificates;
 
@@ -32,7 +43,7 @@ var signatureData = new Dictionary<string, (string name, string date)>();
 signatureData["signature-area-1"] = ("John Doe", DateTime.Now.ToString("yyyy.MM.dd HH:mm:ss"));
 
 using var ms = File.Create("output.pdf");
-var zones = await page.PrintToPdfAsync(html, ms, true, signatureData);
+var zones = await page.PrintToPdfAsync(html, ms, signatureData);
 
 var pdfBytes = File.ReadAllBytes("output.pdf");
 
