@@ -4,6 +4,8 @@ _layout: landing
 
 # PDF Lib
 
+[![NuGet version](https://img.shields.io/nuget/v/YourPackageName.svg)](https://www.nuget.org/packages/Badger.PDFLib.Chromium/)
+
 An open source PDF library using .NET which focuses on rendering PDFs from HTML/CSS, and optionally signing them with digital
 signatures.
 
