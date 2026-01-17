@@ -25,14 +25,11 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Docs", "Docs", "{D9DE7271-0C9E-4D10-A151-FAA1478C6673}"
 	ProjectSection(SolutionItems) = preProject
 		docs\introduction.md = docs\introduction.md
-		docs\getting-started.md = docs\getting-started.md
 		docs\toc.yml = docs\toc.yml
 	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Articles", "Articles", "{655B80DF-5858-45A0-BF2E-458BE85D7F0C}"
 	ProjectSection(SolutionItems) = preProject
-		articles\introduction.md = articles\introduction.md
-		articles\basic-usage.md = articles\basic-usage.md
 		articles\toc.yml = articles\toc.yml
 	EndProjectSection
 EndProject

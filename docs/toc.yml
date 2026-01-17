@@ -1,4 +1,6 @@
 - name: Introduction
   href: introduction.md
-- name: Getting Started
-  href: getting-started.md
+- name: Wait Strategies
+  href: wait-strategies.md
+- name: Digital Signatures
+  href: digital-signatures.md

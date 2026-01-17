@@ -16,6 +16,12 @@ signatures.
 
 ![Metrics Overview](assets/overview.png)
 
+## Features
+
+- Can reuse your frontend code to [generate PDFs](docs/introduction.md)!
+- Can sign PDFs with [digital signatures](docs/digital-signatures.md)
+- Different [wait strategies](docs/wait-strategies.md) to use to indicate a page is ready for printing
+
 ## The Journey:
 
 This project started off as me being bored, a descent into madness. Was curious what it would take to create a PDF in C#. Quite the journey that
@@ -29,9 +35,3 @@ WebKit (Safari) already exist. Blink is pixel-perfect, what you see in the brows
 
 Decided to leverage Chromium's headless shell, which requires using the Chromium Developer Protocol (CDP). Unfortunately, it uses
 base64 encoding on top of using JSON for communication. Thus, a 33% increase in data size off the rip.
-
-## Features
-
-- Can reuse your frontend code to generate PDFs!
-- Can sign PDFs with digital signatures
-- Different wait strategies to use to indicate a page is ready for printing
