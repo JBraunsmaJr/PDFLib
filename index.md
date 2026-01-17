@@ -24,7 +24,7 @@ signatures.
 
 ## The Journey:
 
-This project started off as me being bored, a descent into madness. Was curious what it would take to create a PDF in C#. Quite the journey that
+This project started of as me being bored, a descent into madness. Was curious what it would take to create a PDF in C#. Quite the journey that
 was!
 
 Initially I created a translation layer which converted Razor syntax into PDF syntax. However, it became obvious that styling and layouts
