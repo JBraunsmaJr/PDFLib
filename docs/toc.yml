@@ -1,6 +1,7 @@
-- name: Introduction
-  href: introduction.md
-- name: Wait Strategies
-  href: wait-strategies.md
-- name: Digital Signatures
-  href: digital-signatures.md
+items:
+  - name: Introduction
+    href: introduction.md
+  - name: Wait Strategies
+    href: wait-strategies.md
+  - name: Digital Signatures
+    href: digital-signatures.md
