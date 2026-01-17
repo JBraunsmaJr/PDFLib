@@ -49,14 +49,12 @@ So we have to redirect things.
 ## Base64
 
 Chromium's CDP sends data using Base64 inside JSON, so there is no way around this in the current DevTools
-Protocol.
-
-Base64 is ~33% larger than raw binary. However, by reading 1MB, the 33% overhead yields about 1.33MB of string data.
-Although not ideal, it's fairly negligible considering the state of the modern internet.
+Protocol. Base64 is ~33% larger than raw binary. Although not ideal, we can work with it.
 
 ## Known things
 
-Apparently the following errors are "normal" and do not impact PDF generation
+During testing, I've noticed a few error messages, but they don't seem to affect the output. There might be a way to suppress
+them but have not figured it out yet.
 
 ```
 [0104/155522.469691:ERROR:dbus/bus.cc:406] Failed to connect to the bus: Failed to connect to socket /run/dbus/system_bus_socket: No such file or directory                                               
@@ -74,8 +72,8 @@ Apparently the following errors are "normal" and do not impact PDF generation
 | x2-large-sample.html | 280        |
 | x3-large-sample.html | 420        |
 
-| Method | FileName             | Mean        | Error     | StdDev    | Median      | Allocated  |
-|------- |--------------------- |------------:|----------:|----------:|------------:|-----------:|
+| Method | FileName             |        Mean |     Error |    StdDev |      Median |  Allocated |
+|--------|----------------------|------------:|----------:|----------:|------------:|-----------:|
 | Dink   | large-sample.html    | 1,010.58 ms |  9.862 ms |  8.235 ms | 1,007.34 ms |  636.86 KB |                                                                                                        
 | PdfLib | large-sample.html    |   845.99 ms |  8.489 ms |  7.089 ms |   845.25 ms |  138.13 KB |
 | Dink   | sample.html          |   250.86 ms |  4.952 ms |  8.543 ms |   253.14 ms |  119.42 KB |
@@ -86,8 +84,9 @@ Apparently the following errors are "normal" and do not impact PDF generation
 | PdfLib | x3-large-sample.html | 2,806.93 ms | 23.164 ms | 21.668 ms | 2,801.68 ms |  385.69 KB |
 
 
-DinkToPdf builds on top of a wkhtmltopdf library which was the defacto standard for server-based PDF generation. However, it was built on top of QT engine's implementation, which is no longer maintained or supported. 
-It's not recommended to use wkhtmltopdf due to security vulnerabilities. Also does not support the latest JavaScript, HTML, or CSS features.
+DinkToPdf builds on top of a wkhtmltopdf library which was the defacto standard for server-based PDF generation. However, 
+it was built on top of the QT engine's implementation, which is no longer maintained or supported. It's not recommended to 
+use wkhtmltopdf due to security vulnerabilities. Also does not support the latest JavaScript, HTML, or CSS features.
 
 # NuGet Deployment & Prerequisites
 
