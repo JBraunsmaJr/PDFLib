@@ -5,7 +5,22 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <GenerateDocumentationFile>true</GenerateDocumentationFile>
+        <Version>1.0.0</Version>
+        <Authors>JBraunsmaJr</Authors>
+        <Description>Super basic ability to create a PDF via Razor syntax. However, it's mostly used by PDFLib.Chromium for signing PDFs... because it became apparent that HTML/CSS was the way to go</Description>
+        <PackageTags>pdf;razor;generator;skia</PackageTags>
+        <PackageProjectUrl>https://jbraunsmajr.github.io/PDFLib/index.html</PackageProjectUrl>
+        <RepositoryUrl>https://github.com/JBraunsmaJr/PDFLib</RepositoryUrl>
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <VersionSuffix>$(BuildNumber)</VersionSuffix>
+        <BuildNumber Condition="'$(BuildNumber)' == ''">1</BuildNumber>
     </PropertyGroup>
+
+    <Target Name="UpdateBuildNumber" BeforeTargets="Pack">
+        <PropertyGroup>
+            <BuildNumber>$([MsBuild]::Add($(BuildNumber), 1))</BuildNumber>
+        </PropertyGroup>
+    </Target>
 
     <ItemGroup>
         <PackageReference Include="Microsoft.AspNetCore.Components" Version="10.0.1"/>

@@ -1,6 +1,8 @@
 items:
   - name: Introduction
     href: introduction.md
+  - name: Setup
+    href: setup.md
   - name: Wait Strategies
     href: wait-strategies.md
   - name: Digital Signatures

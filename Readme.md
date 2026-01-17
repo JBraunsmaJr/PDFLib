@@ -37,7 +37,7 @@ data (from `PipeReader`) and correctly processes JSON escapes. For unknown messa
 
 # Overview
 
-The C# Project **PDFLib.Razor** is a library which manually crafts PDFs, without using third-party libraries. Went on to explore
+The C# Project **PDFLib.Razor** is a library that manually crafts PDFs without using third-party libraries. Went on to explore
 the possibility of using Razor syntax to generate PDFs as well, instead of pursuing a fluent-api. After playing with the idea,
 I realized the difficulty in pursuing styling. Developers would also require a "PDF" version of their webpages, which is
 not ideal.
@@ -45,8 +45,8 @@ not ideal.
 To leverage existing HTML/CSS, one requires a renderer. WebKit and Blink are the two most popular choices. For the time being,
 I've opted to use Chrome's headless Chromium since it's said to be pixel-perfect when creating PDFs.
 
-**PDFLib.Chromium** is where Chromium is being explored. The difficulty lies in extracting as much performance out of it as possible. There is an inherit overhead by using a browser (albeit headless)
-as it has to render using Blink engine, and runs the V8 engine for javascript.
+**PDFLib.Chromium** is where Chromium is being explored. The difficulty lies in extracting as much performance out of it as possible. There is an inherited overhead by using a browser (albeit headless)
+as it has to render using Blink engine and runs the V8 engine for JavaScript.
 
 # Research / Path
 
@@ -94,35 +94,6 @@ Apparently the following errors are "normal" and do not impact PDF generation
 | x2-large-sample.html | 280        |
 | x3-large-sample.html | 420        |
 
-At first, the library out performed DinkToPdf for smaller workloads. That changed with larger workloads. Memory allocations ballooned and speed took a hit.
-
-| Method | FileName             |       Mean |     Error |    StdDev |     Median |      Gen0 |      Gen1 |   Allocated |
-|--------|----------------------|-----------:|----------:|----------:|-----------:|----------:|----------:|------------:|
-| Dink   | large-sample.html    | 1,463.7 ms |  88.62 ms | 261.30 ms | 1,477.9 ms |         - |         - |   556.66 KB |                                                                                 
-| PdfLib | large-sample.html    | 1,412.9 ms |  83.36 ms | 245.79 ms | 1,521.8 ms | 1000.0000 |         - |  9023.87 KB |
-| Dink   | sample.html          |   226.9 ms |   4.53 ms |   6.04 ms |   224.9 ms |         - |         - |   119.41 KB |
-| PdfLib | sample.html          |   114.3 ms |   7.00 ms |  20.31 ms |   114.7 ms |         - |         - |    87.59 KB |
-| Dink   | x2-large-sample.html | 2,067.1 ms | 112.95 ms | 318.59 ms | 1,887.9 ms |         - |         - |  1006.61 KB |
-| PdfLib | x2-large-sample.html | 1,732.4 ms |  11.41 ms |  10.67 ms | 1,733.7 ms | 1000.0000 |         - | 19073.21 KB |
-| Dink   | x3-large-sample.html | 2,611.6 ms |   9.80 ms |   9.17 ms | 2,611.5 ms |         - |         - |  1457.91 KB |
-| PdfLib | x3-large-sample.html | 3,104.5 ms |  66.57 ms | 183.36 ms | 3,062.2 ms | 3000.0000 | 2000.0000 | 21212.35 KB |
-
-Perf branch (benchmarked on a separate machine):
-
-| Method | FileName             |        Mean |      Error |     StdDev |      Median |   Allocated |
-|--------|----------------------|------------:|-----------:|-----------:|------------:|------------:|
-| Dink   | large-sample.html    | 1,257.07 ms |  24.921 ms |  38.057 ms | 1,260.68 ms |   556.66 KB |                                                                                                                               
-| PdfLib | large-sample.html    | 1,015.48 ms |  20.241 ms |  29.029 ms | 1,008.90 ms |  7318.37 KB |
-| Dink   | sample.html          |   230.42 ms |   2.169 ms |   2.029 ms |   230.75 ms |   119.41 KB |
-| PdfLib | sample.html          |    97.86 ms |   2.052 ms |   5.986 ms |    96.94 ms |    87.57 KB |
-| Dink   | x2-large-sample.html | 2,232.20 ms |  33.663 ms |  38.767 ms | 2,219.86 ms |  1006.61 KB |
-| PdfLib | x2-large-sample.html | 2,106.81 ms |  57.644 ms | 158.769 ms | 2,044.80 ms | 15645.16 KB |
-| Dink   | x3-large-sample.html | 3,564.62 ms | 177.177 ms | 499.731 ms | 3,355.50 ms |  1457.91 KB |
-| PdfLib | x3-large-sample.html | 3,451.96 ms | 134.999 ms | 398.049 ms | 3,256.12 ms |  15780.7 KB |
-
-More Perf: - I've been a dingus and using memory stream in the benchmark which is included as part of our memory allocations.
-The intent is for the library to be streamed into its destination so that we can avoid the memory allocations. 
-
 | Method | FileName             | Mean        | Error     | StdDev    | Median      | Allocated  |
 |------- |--------------------- |------------:|----------:|----------:|------------:|-----------:|
 | Dink   | large-sample.html    | 1,010.58 ms |  9.862 ms |  8.235 ms | 1,007.34 ms |  636.86 KB |                                                                                                        
@@ -134,14 +105,50 @@ The intent is for the library to be streamed into its destination so that we can
 | Dink   | x3-large-sample.html | 2,572.94 ms |  7.158 ms |  6.346 ms | 2,573.16 ms | 1698.45 KB |
 | PdfLib | x3-large-sample.html | 2,806.93 ms | 23.164 ms | 21.668 ms | 2,801.68 ms |  385.69 KB |
 
-For about 840 pages (simply doubled the x3-large.sample.html file), we achieve the following:
 
-| Method | FileName             | Mean    | Error    | StdDev   | Allocated |
-|------- |--------------------- |--------:|---------:|---------:|----------:|
-| Dink   | x6-large-sample.html | 4.922 s | 0.0335 s | 0.0280 s |   3.21 MB |                                                                                                                             
-| PdfLib | x6-large-sample.html | 8.734 s | 0.0422 s | 0.0353 s |   33.5 MB |
-
-DinkToPdf builds on top of wkhtmltopdf library which was the defacto standard for server-based PDF generation. However, it was built on top of QT engine's implementation which is no longer maintained or supported. 
+DinkToPdf builds on top of a wkhtmltopdf library which was the defacto standard for server-based PDF generation. However, it was built on top of QT engine's implementation, which is no longer maintained or supported. 
 It's not recommended to use wkhtmltopdf due to security vulnerabilities. Also does not support the latest JavaScript, HTML, or CSS features.
 
-Since open-source libraries have not replaced it, industry has shifted towards using chromium's tooling. 
+# NuGet Deployment & Prerequisites
+
+**PDFLib.Chromium** is available as a NuGet package.
+
+## PDFLib.Chromium
+This library requires **Headless Chromium** and specific system libraries to function.
+
+### Platform Support
+Currently, `PDFLib.Chromium` uses Linux-specific APIs (`pipe`, `fcntl`) for communication with Chromium and is intended for use on **Linux** (including Docker containers.... especially Docker containers).
+
+### Prerequisites
+To use `PDFLib.Chromium`, you must ensure that Chromium and its dependencies are installed in your environment.
+
+#### 1. Chromium Headless Shell
+The library expects `chrome-headless-shell` to be available in your PATH or configured via `BrowserOptions.BinaryPath`.
+
+#### 2. Linux Dependencies
+On Debian-based systems (like the official .NET images), you can install the necessary dependencies using:
+
+```bash
+apt-get update && apt-get install -y --no-install-recommends \
+    wget zlib1g fontconfig libfreetype6 libx11-6 libxext6 libxrender1 \
+    libssl3 xfonts-75dpi xfonts-base curl unzip libnss3 libatk1.0-0t64 \
+    libatk-bridge2.0-0 libcups2 libdrm2 libxcomposite1 libxdamage1 \
+    libxfixes3 libxrandr2 libgbm1 libasound2t64 libxkbcommon0 \
+    libpango-1.0-0 libpangocairo-1.0-0 libxshmfence1 fonts-liberation \
+    libfontconfig1 ca-certificates fonts-ipafont-gothic fonts-wqy-zenhei \
+    fonts-thai-tlwg fonts-kacst fonts-freefont-ttf fonts-noto-color-emoji \
+    fonts-dejavu-core
+```
+
+For a complete reference on how to set up the environment, see the [Dockerfile](./PDFLib.Chromium.TestConsole/Dockerfile).
+
+#### 3. Setup Script (Optional)
+If you are deploying to a custom Linux environment, you can use the following snippet to download the recommended version of the Headless Chromium shell:
+
+```bash
+export HEADLESS_CHROMIUM_DOWNLOAD_URL="https://storage.googleapis.com/chrome-for-testing-public/145.0.7572.2/linux64/chrome-headless-shell-linux64.zip"
+curl -SL "$HEADLESS_CHROMIUM_DOWNLOAD_URL" -o /tmp/chromium.zip
+unzip /tmp/chromium.zip -d /opt/chromium
+ln -s /opt/chromium/chrome-headless-shell-linux64/chrome-headless-shell /usr/local/bin/chrome-shell
+chmod +x /usr/local/bin/chrome-shell
+```

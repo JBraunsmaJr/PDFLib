@@ -28,11 +28,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Docs", "Docs", "{D9DE7271-0
 		docs\toc.yml = docs\toc.yml
 	EndProjectSection
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Articles", "Articles", "{655B80DF-5858-45A0-BF2E-458BE85D7F0C}"
-	ProjectSection(SolutionItems) = preProject
-		articles\toc.yml = articles\toc.yml
-	EndProjectSection
-EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Assets", "Assets", "{774FFDE9-F744-4857-B815-9BDE44291919}"
 	ProjectSection(SolutionItems) = preProject
 		assets\performance-chart.png = assets\performance-chart.png
