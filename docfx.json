@@ -2,10 +2,10 @@
   "$schema": "https://raw.githubusercontent.com/dotnet/docfx/main/schemas/docfx.schema.json",
   "metadata": [
     {
+      "noRestore": true,
       "src": [
         {
           "files": [
-            "PDFLib/PDFLib.csproj",
             "PDFLib.Chromium/PDFLib.Chromium.csproj",
             "PDFLib.Razor/PDFLib.Razor.csproj"
           ]

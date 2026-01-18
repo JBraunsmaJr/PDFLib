@@ -21,6 +21,11 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      - name: Restore dependencies
+        run: |
+          dotnet restore PDFLib.Chromium/PDFLib.Chromium.csproj
+          dotnet restore PDFLib.Razor/PDFLib.Razor.csproj
+
       - name: Install DocFX
         run: dotnet tool install -g docfx
 
