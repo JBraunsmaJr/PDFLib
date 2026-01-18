@@ -60,6 +60,7 @@ USER 0
 
 WORKDIR /src
 COPY . .
+RUN mkdir -p PDFLib.Chromium.TestConsole/packages
 RUN dotnet restore "Benchmarks/Benchmarks.csproj"
 WORKDIR "/src/Benchmarks"
 RUN dotnet build "./Benchmarks.csproj" -c "release"
