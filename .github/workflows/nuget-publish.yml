@@ -19,7 +19,8 @@ jobs:
     - name: Install dependencies
       run: |
         mkdir -p PDFLib.Chromium.TestConsole/packages
-        dotnet restore
+        dotnet restore PDFLib.Razor
+        dotnet restore PDFLib.Chromium        
 
     - name: Download Chromium and Pack
       run: |
