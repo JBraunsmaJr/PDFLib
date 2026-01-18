@@ -10,7 +10,7 @@
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <GenerateDocumentationFile>true</GenerateDocumentationFile>
         <VersionPrefix>1.0.0</VersionPrefix>
-        <VersionSuffix Condition="'$(BuildNumber)' != ''">$(BuildNumber)</VersionSuffix>
+        <VersionSuffix Condition="'$(BuildNumber)' != ''">build.$(BuildNumber)</VersionSuffix>
         <BuildNumber Condition="'$(BuildNumber)' == ''">1</BuildNumber>
         <Authors>JBraunsmaJr</Authors>
         <PackageId>Badger.PDFLib.Chromium</PackageId>
@@ -21,7 +21,7 @@
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
     </PropertyGroup>
     
-    <Target Name="UpdateBuildNumber" BeforeTargets="Pack" Condition="'$(BuildNumber)' != '' AND '$(BuildNumber)' != '0'">
+    <Target Name="UpdateBuildNumber" BeforeTargets="Pack" Condition="'$(BuildNumber)' != '' AND '$(BuildNumber)' != '0' AND '$(GITHUB_ACTIONS)' != 'true'">
         <PropertyGroup>
             <BuildNumber>$([MsBuild]::Add($(BuildNumber), 1))</BuildNumber>
         </PropertyGroup>
