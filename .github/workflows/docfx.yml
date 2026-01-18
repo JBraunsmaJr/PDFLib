@@ -23,6 +23,7 @@ jobs:
 
       - name: Restore dependencies
         run: |
+          mkdir -p PDFLib.Chromium.TestConsole/packages
           dotnet restore PDFLib.Chromium/PDFLib.Chromium.csproj
           dotnet restore PDFLib.Razor/PDFLib.Razor.csproj
 
