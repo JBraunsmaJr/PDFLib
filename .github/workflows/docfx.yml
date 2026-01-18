@@ -26,6 +26,11 @@ jobs:
           dotnet restore PDFLib.Chromium/PDFLib.Chromium.csproj
           dotnet restore PDFLib.Razor/PDFLib.Razor.csproj
 
+      - name: Download Chromium and Pack
+        run: |
+          dotnet build PDFLib.Chromium/PDFLib.Chromium.csproj -c Release -r linux-x64
+          dotnet pack PDFLib.Chromium/PDFLib.Chromium.csproj -c Release -r linux-x64 --no-build -p:DownloadLatestChromium=true -p:BuildNumber=${{ github.run_number }} --output nupkg
+
       - name: Install DocFX
         run: dotnet tool install -g docfx
 
