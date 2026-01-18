@@ -9,7 +9,8 @@ dotnet restore PDFLib.Chromium/PDFLib.Chromium.csproj
 dotnet restore PDFLib.Razor/PDFLib.Razor.csproj
 
 echo "[Test] Packing PDFLib.Chromium (Bundled)..."
-dotnet pack ./PDFLib.Chromium/PDFLib.Chromium.csproj -c Release -p:DownloadLatestChromium=true -o ./PDFLib.Chromium.TestConsole/packages
+dotnet build ./PDFLib.Chromium/PDFLib.Chromium.csproj -c Release -p:DownloadLatestChromium=true
+dotnet pack ./PDFLib.Chromium/PDFLib.Chromium.csproj -c Release -p:DownloadLatestChromium=true -o ./PDFLib.Chromium.TestConsole/packages --no-build
 
 echo "[Test] Building and running Docker container..."
 docker build -t pdflib-chromium-test -f PDFLib.Chromium.TestConsole/Dockerfile .
