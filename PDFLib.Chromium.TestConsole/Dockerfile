@@ -51,15 +51,10 @@ ARG BUILD_CONFIGURATION=Release
 WORKDIR /packages
 COPY ["PDFLib.Chromium.TestConsole/packages/*.nupkg", "./"]
 
+# Copy everything and restore from root
 WORKDIR /src
-COPY ["PDFLib.Chromium.TestConsole/PDFLib.Chromium.TestConsole.csproj", "PDFLib.Chromium.TestConsole/"]
-
-# Add local source and NuGet.org, then add package
-RUN dotnet nuget add source /packages --name local-packages
-RUN dotnet restore "PDFLib.Chromium.TestConsole/PDFLib.Chromium.TestConsole.csproj"
-
-WORKDIR "/src"
 COPY . .
+RUN dotnet restore "PDFLib.Chromium.TestConsole/PDFLib.Chromium.TestConsole.csproj"
 WORKDIR "/src/PDFLib.Chromium.TestConsole"
 RUN dotnet build "./PDFLib.Chromium.TestConsole.csproj" -c $BUILD_CONFIGURATION -o /app/build
 

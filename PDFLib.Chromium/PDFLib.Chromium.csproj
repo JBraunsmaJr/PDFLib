@@ -59,6 +59,8 @@
     <ItemGroup>
       <ProjectReference Include="..\PDFLib.Razor\PDFLib.Razor.csproj">
         <PrivateAssets>all</PrivateAssets>
+        <ReferenceOutputAssembly>true</ReferenceOutputAssembly>
+        <IncludeAssets>all</IncludeAssets>
       </ProjectReference>
     </ItemGroup>
 

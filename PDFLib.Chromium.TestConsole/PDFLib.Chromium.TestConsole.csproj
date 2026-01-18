@@ -28,11 +28,16 @@
         <AdditionalFiles Include="samples\signature-test.html">
           <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </AdditionalFiles>
+        <None Remove="packages\Badger.PDFLib.Chromium.1.0.0.nupkg" />
     </ItemGroup>
 
     <ItemGroup>
         <Content Include="..\.dockerignore">
             <Link>.dockerignore</Link>
         </Content>
+    </ItemGroup>
+
+    <ItemGroup>
+      <Folder Include="packages\" />
     </ItemGroup>
 </Project>
