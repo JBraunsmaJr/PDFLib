@@ -24,7 +24,8 @@ jobs:
 
     - name: Download Chromium and Pack
       run: |
-        dotnet pack PDFLib.Chromium/PDFLib.Chromium.csproj -c Release -p:DownloadLatestChromium=true -p:BuildNumber=${{ github.run_number }} --output nupkg
+        dotnet build PDFLib.Chromium/PDFLib.Chromium.csproj -c Release -r linux-x64
+        dotnet pack PDFLib.Chromium/PDFLib.Chromium.csproj -c Release -r linux-x64 --no-build -p:DownloadLatestChromium=true -p:BuildNumber=${{ github.run_number }} --output nupkg
 
     - name: Push to NuGet
       run: |
