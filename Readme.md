@@ -102,10 +102,28 @@ Currently, `PDFLib.Chromium` uses Linux-specific APIs (`pipe`, `fcntl`) for comm
 To use `PDFLib.Chromium`, you must ensure that Chromium and its dependencies are installed in your environment.
 
 #### 1. Chromium Headless Shell
-The library expects `chrome-headless-shell` to be available in your PATH or configured via `BrowserOptions.BinaryPath`.
+By default, the library expects `chrome-headless-shell` to be available in your system PATH.
+
+**Automatic Bundling**:
+Automatically download and bundle the latest Chromium binary into the NuGet package by running:
+
+```bash
+dotnet pack -p:DownloadLatestChromium=true
+```
+
+Alternatively, you can manually run the download script:
+```bash
+./scripts/download-chromium.sh
+```
+
+This will place the binary and its sidecar files in `PDFLib.Chromium/runtimes/linux-x64/native/`.
+
+**Manual Bundling**
+You can also manually place the `chrome-headless-shell` binary into the following directory before packing or building:
+`PDFLib.Chromium/runtimes/linux-x64/native/chrome-headless-shell`
 
 #### 2. Linux Dependencies
-On Debian-based systems (like the official .NET images), you can install the necessary dependencies using:
+Even when bundling the Chromium binary, you **must** still install the necessary system-level shared libraries and fonts on your Linux host. These are required for Chromium to run.
 
 ```bash
 apt-get update && apt-get install -y --no-install-recommends \
@@ -120,14 +138,3 @@ apt-get update && apt-get install -y --no-install-recommends \
 ```
 
 For a complete reference on how to set up the environment, see the [Dockerfile](./PDFLib.Chromium.TestConsole/Dockerfile).
-
-#### 3. Setup Script (Optional)
-If you are deploying to a custom Linux environment, you can use the following snippet to download the recommended version of the Headless Chromium shell:
-
-```bash
-export HEADLESS_CHROMIUM_DOWNLOAD_URL="https://storage.googleapis.com/chrome-for-testing-public/145.0.7572.2/linux64/chrome-headless-shell-linux64.zip"
-curl -SL "$HEADLESS_CHROMIUM_DOWNLOAD_URL" -o /tmp/chromium.zip
-unzip /tmp/chromium.zip -d /opt/chromium
-ln -s /opt/chromium/chrome-headless-shell-linux64/chrome-headless-shell /usr/local/bin/chrome-shell
-chmod +x /usr/local/bin/chrome-shell
-```

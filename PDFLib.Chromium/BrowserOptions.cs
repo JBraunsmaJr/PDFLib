@@ -16,9 +16,11 @@ public class BrowserOptions
     public long MemoryThresholdMb { get; set; } = 1024;
 
     /// <summary>
-    /// Gets or sets the path to the Chromium binary. Defaults to "chrome-shell".
+    /// Gets or sets the path to the Chromium binary. 
+    /// If not set, the library will attempt to find the bundled binary in the runtimes folder,
+    /// or fall back to "chrome-shell" in the system PATH.
     /// </summary>
-    public string BinaryPath { get; set; } = "chrome-shell";
+    public string? BinaryPath { get; set; }
 
     /// <summary>
     /// Gets or sets the strategy to use when waiting for the page to be ready for rendering.

@@ -54,13 +54,37 @@ public class CdpPage : IAsyncDisposable
         }
     }
 
+    private static string? _findSignatureAreasScript;
+
     private string FindSignatureAreasScript
     {
         get
         {
-            if (!string.IsNullOrWhiteSpace(field)) return field;
-            field = File.ReadAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "FindSignatureAreas.js"));
-            return field;
+            if (!string.IsNullOrWhiteSpace(_findSignatureAreasScript)) return _findSignatureAreasScript;
+
+            var assembly = typeof(CdpPage).Assembly;
+            var resourceName = "PDFLib.Chromium.FindSignatureAreas.js";
+
+            using (var stream = assembly.GetManifestResourceStream(resourceName))
+            {
+                if (stream != null)
+                {
+                    using var reader = new StreamReader(stream);
+                    _findSignatureAreasScript = reader.ReadToEnd();
+                    return _findSignatureAreasScript;
+                }
+            }
+
+            // Fallback for local development if not embedded for some reason
+            var baseDir = AppContext.BaseDirectory;
+            var localPath = Path.Combine(baseDir, "FindSignatureAreas.js");
+            if (File.Exists(localPath))
+            {
+                _findSignatureAreasScript = File.ReadAllText(localPath);
+                return _findSignatureAreasScript;
+            }
+
+            throw new FileNotFoundException($"Could not find embedded resource '{resourceName}' or local file '{localPath}'.", "FindSignatureAreas.js");
         }
     }
     

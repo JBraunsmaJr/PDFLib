@@ -75,6 +75,39 @@ public class ChromiumBrowser : IDisposable
     [DllImport("libc", SetLastError = true)]
     private static extern int fcntl(int fd, int cmd, int arg);
 
+    private string ResolveBinaryPath()
+    {
+        if (!string.IsNullOrEmpty(_options.BinaryPath))
+        {
+            return _options.BinaryPath;
+        }
+        
+        /*
+         * If installed via Nuget, this is where the binary should be installed
+         * runtimes/linux-x64/native/chrome-headless-shell
+         */
+        var baseDir = AppContext.BaseDirectory;
+        var bundledPath = Path.Combine(baseDir, "runtimes", "linux-x64", "native", "chrome-headless-shell");
+        
+        if (File.Exists(bundledPath))
+        {
+            return bundledPath;
+        }
+
+        /*
+         * For local builds it should be in
+         * builds/published
+         */
+        var localPath = Path.Combine(baseDir, "chrome-headless-shell");
+        if (File.Exists(localPath))
+        {
+            return localPath;
+        }
+
+        // Fallback to system PATH
+        return "chrome-shell";
+    }
+
     /// <summary>
     /// Starts the Chromium browser process with the given options.
     /// </summary>
@@ -89,6 +122,8 @@ public class ChromiumBrowser : IDisposable
         _options = options ?? new BrowserOptions();
         _renderSemaphore = new SemaphoreSlim(_options.MaxConcurrentRenders);
 
+        var binaryPath = ResolveBinaryPath();
+
         var pipeOut = new int[2]; // C# -> Chrome
         var pipeIn = new int[2]; // Chrome -> C#
 
@@ -99,7 +134,7 @@ public class ChromiumBrowser : IDisposable
         fcntl(pipeIn[1], 2, 0);
 
         var shellCmd =
-            $"exec 3<&{pipeOut[0]} 4>&{pipeIn[1]}; exec {_options.BinaryPath} --headless --remote-debugging-pipe --no-sandbox " +
+            $"exec 3<&{pipeOut[0]} 4>&{pipeIn[1]}; exec {binaryPath} --headless --remote-debugging-pipe --no-sandbox " +
             "--disable-gpu --disable-dev-shm-usage --disable-software-rasterizer --disable-extensions " +
             "--disable-background-networking --disable-sync --disable-default-apps --mute-audio";
 

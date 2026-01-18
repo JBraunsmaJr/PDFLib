@@ -1,0 +1,16 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ChromiumBinaryFiles Include="$(MSBuildThisFileDirectory)..\runtimes\linux-x64\native\chrome-headless-shell" />
+    <ChromiumBinaryFiles Include="$(MSBuildThisFileDirectory)..\runtimes\linux-x64\native\**\*" Exclude="$(MSBuildThisFileDirectory)..\runtimes\linux-x64\native\chrome-headless-shell" />
+  </ItemGroup>
+
+  <Target Name="CopyChromiumBinary" BeforeTargets="Build;Publish">
+    <Copy SourceFiles="@(ChromiumBinaryFiles)"
+          DestinationFolder="$(TargetDir)runtimes\linux-x64\native\%(RecursiveDir)"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="MakeChromiumExecutable" AfterTargets="CopyChromiumBinary" Condition="'$(OS)' != 'Windows_NT'">
+    <Exec Command="chmod +x &quot;$(TargetDir)runtimes/linux-x64/native/chrome-headless-shell&quot;" IgnoreExitCode="true" />
+  </Target>
+</Project>

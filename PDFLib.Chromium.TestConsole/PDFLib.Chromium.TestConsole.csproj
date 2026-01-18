@@ -8,6 +8,10 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <PackageReference Include="Badger.PDFLib.Chromium" Version="1.0.0-*" />
+    </ItemGroup>
+
+    <ItemGroup>
         <AdditionalFiles Include="samples\js-variable-wait.html">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </AdditionalFiles>
@@ -31,9 +35,4 @@
             <Link>.dockerignore</Link>
         </Content>
     </ItemGroup>
-
-    <ItemGroup>
-        <ProjectReference Include="..\PDFLib.Chromium\PDFLib.Chromium.csproj"/>
-    </ItemGroup>
-
 </Project>

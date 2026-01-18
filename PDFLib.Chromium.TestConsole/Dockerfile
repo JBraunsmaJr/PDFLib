@@ -43,28 +43,21 @@ RUN apt-get update &&  \
     fonts-dejavu-core && \
     rm -rf /var/lib/apt/lists/*
 
-# Download the headless shell of chromium
-RUN curl -SL "$HEADLESS_CHROMIUM_DOWNLOAD_URL" -o /tmp/chromium.zip && \
-    unzip /tmp/chromium.zip -d /opt/chromium && \
-    rm /tmp/chromium.zip && \
-    ln -s /opt/chromium/chrome-headless-shell-linux64/chrome-headless-shell /usr/local/bin/chrome-shell 
-
-RUN chmod +x /usr/local/bin/chrome-shell
-RUN chrome-shell --version     
-
-# RUN mkdir -p /out && chmod 777 -R /out
-
-# USER $APP_UID
-
 WORKDIR /app
 
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 ARG BUILD_CONFIGURATION=Release
+
+WORKDIR /packages
+COPY ["PDFLib.Chromium.TestConsole/packages/*.nupkg", "./"]
+
 WORKDIR /src
 COPY ["PDFLib.Chromium.TestConsole/PDFLib.Chromium.TestConsole.csproj", "PDFLib.Chromium.TestConsole/"]
-COPY ["PDFLib.Chromium/PDFLib.Chromium.csproj", "PDFLib.Chromium/"]
-COPY ["PDFLib.Razor/PDFLib.Razor.csproj", "PDFLib.Razor/"]
+
+# Add local source and NuGet.org, then add package
+RUN dotnet nuget add source /packages --name local-packages
 RUN dotnet restore "PDFLib.Chromium.TestConsole/PDFLib.Chromium.TestConsole.csproj"
+
 WORKDIR "/src"
 COPY . .
 WORKDIR "/src/PDFLib.Chromium.TestConsole"
