@@ -3,7 +3,10 @@ set -e
 
 cd "$(dirname "$0")/.."
 
-mkdir -p ./PDFLib.Chromium.TestConsole/packages
+mkdir -p PDFLib.Chromium.TestConsole/packages
+
+dotnet restore PDFLib.Chromium/PDFLib.Chromium.csproj
+dotnet restore PDFLib.Razor/PDFLib.Razor.csproj
 
 echo "[Test] Packing PDFLib.Chromium (Bundled)..."
 dotnet pack ./PDFLib.Chromium/PDFLib.Chromium.csproj -c Release -p:DownloadLatestChromium=true -o ./PDFLib.Chromium.TestConsole/packages
