@@ -9,7 +9,7 @@
         <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <GenerateDocumentationFile>true</GenerateDocumentationFile>
-        <VersionPrefix>1.0.0</VersionPrefix>
+        <VersionPrefix>1.0.</VersionPrefix>
         <VersionSuffix Condition="'$(BuildNumber)' != ''">build.$(BuildNumber)</VersionSuffix>
         <BuildNumber Condition="'$(BuildNumber)' == ''">1</BuildNumber>
         <Authors>JBraunsmaJr</Authors>

@@ -1,6 +1,9 @@
 name: Publish NuGet Package
 
-on: [release]
+on:
+  release: 
+    when: 
+      action: published
 
 jobs:
   publish:
