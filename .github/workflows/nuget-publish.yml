@@ -1,9 +1,8 @@
 name: Publish NuGet Package
 
 on:
-  release: 
-    when: 
-      action: published
+  release:
+    types: [published]
 
 jobs:
   publish:
@@ -24,8 +23,10 @@ jobs:
 
     - name: Download Chromium and Pack
       run: |
-        dotnet build PDFLib.Chromium/PDFLib.Chromium.csproj -c Release -r linux-x64
-        dotnet pack PDFLib.Chromium/PDFLib.Chromium.csproj -c Release -r linux-x64 --no-build -p:DownloadLatestChromium=true -p:BuildNumber=${{ github.run_number }} --output nupkg
+        VERSION=${{ github.event.release.tag_name }}
+        VERSION=${VERSION#v}
+        dotnet build PDFLib.Chromium/PDFLib.Chromium.csproj -c Release -r linux-x64 -p:Version=$VERSION
+        dotnet pack PDFLib.Chromium/PDFLib.Chromium.csproj -c Release -r linux-x64 --no-build -p:DownloadLatestChromium=true -p:Version=$VERSION --output nupkg
 
     - name: Push to NuGet
       run: |

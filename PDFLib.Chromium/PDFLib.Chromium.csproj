@@ -9,9 +9,7 @@
         <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <GenerateDocumentationFile>true</GenerateDocumentationFile>
-        <VersionPrefix>1.0.</VersionPrefix>
-        <VersionSuffix Condition="'$(BuildNumber)' != ''">build.$(BuildNumber)</VersionSuffix>
-        <BuildNumber Condition="'$(BuildNumber)' == ''">1</BuildNumber>
+        <Version Condition="'$(Version)' == ''">1.0.0</Version>
         <Authors>JBraunsmaJr</Authors>
         <PackageId>Badger.PDFLib.Chromium</PackageId>
         <Description>Chromium-based PDF generation engine for PDFLib. Leverages Headless Chromium for pixel-perfect HTML to PDF conversion.</Description>
@@ -21,12 +19,6 @@
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
     </PropertyGroup>
     
-    <Target Name="UpdateBuildNumber" BeforeTargets="Pack" Condition="'$(BuildNumber)' != '' AND '$(BuildNumber)' != '0' AND '$(GITHUB_ACTIONS)' != 'true'">
-        <PropertyGroup>
-            <BuildNumber>$([MsBuild]::Add($(BuildNumber), 1))</BuildNumber>
-        </PropertyGroup>
-    </Target>
-
     <Target Name="DownloadChromium" BeforeTargets="Build;Pack" Condition="'$(DownloadLatestChromium)' == 'true'">
         <Message Importance="high" Text=" " />
         <Message Importance="high" Text="[PDFLib] Checking/Downloading latest Chromium headless shell..." />
