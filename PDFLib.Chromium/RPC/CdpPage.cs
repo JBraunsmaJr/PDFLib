@@ -417,7 +417,7 @@ public class CdpPage : IAsyncDisposable
 
         public Task<bool> Task => _tcs.Task;
 
-        public void Handle(ReadOnlySequence<byte> message)
+        public async void Handle(ReadOnlySequence<byte> message)
         {
             try
             {
@@ -426,6 +426,7 @@ public class CdpPage : IAsyncDisposable
                 var base64Encoded = false;
                 var hasError = false;
                 string? errorText = null;
+                ReadOnlySequence<byte> data = default;
 
                 while (reader.Read())
                 {
@@ -441,7 +442,7 @@ public class CdpPage : IAsyncDisposable
                             if (reader.ValueTextEquals("data"u8))
                             {
                                 reader.Read();
-                                ProcessData(ref reader, base64Encoded);
+                                data = reader.HasValueSequence ? reader.ValueSequence : new ReadOnlySequence<byte>(reader.ValueSpan.ToArray());
                             }
                             else if (reader.ValueTextEquals("eof"u8))
                             {
@@ -472,9 +473,17 @@ public class CdpPage : IAsyncDisposable
                 }
 
                 if (hasError)
+                {
                     _tcs.TrySetException(new Exception($"CDP Error: {errorText}"));
-                else
-                    _tcs.TrySetResult(eof);
+                    return;
+                }
+
+                if (!data.IsEmpty)
+                {
+                    await ProcessDataAsync(data, base64Encoded);
+                }
+
+                _tcs.TrySetResult(eof);
             }
             catch (Exception ex)
             {
@@ -496,12 +505,11 @@ public class CdpPage : IAsyncDisposable
                 _tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         }
 
-        private void ProcessData(ref Utf8JsonReader reader, bool isBase64)
+        private async Task ProcessDataAsync(ReadOnlySequence<byte> data, bool isBase64)
         {
             if (isBase64)
             {
-                var payloadLength =
-                    reader.HasValueSequence ? (int)reader.ValueSequence.Length : reader.ValueSpan.Length;
+                var payloadLength = (int)data.Length;
                 var halfBuffer = _scratchBuffer.Length / 2;
 
                 if (payloadLength > halfBuffer)
@@ -510,9 +518,14 @@ public class CdpPage : IAsyncDisposable
                     var input = ArrayPool<byte>.Shared.Rent(payloadLength);
                     try
                     {
-                        if (reader.HasValueSequence) reader.ValueSequence.CopyTo(input);
-                        else reader.ValueSpan.CopyTo(input);
-                        if (reader.TryGetBytesFromBase64(out var bytes)) _destinationStream.Write(bytes);
+                        data.CopyTo(input);
+                        
+                        // We need to decode base64 from the input buffer
+                        var status = Base64.DecodeFromUtf8(input.AsSpan(0, payloadLength), input, out _, out var written);
+                        if (status == OperationStatus.Done)
+                        {
+                            await _destinationStream.WriteAsync(input.AsMemory(0, written));
+                        }
                     }
                     finally
                     {
@@ -523,24 +536,20 @@ public class CdpPage : IAsyncDisposable
                 }
 
                 var inputSpan = _scratchBuffer.AsSpan(0, payloadLength);
-                if (reader.HasValueSequence) reader.ValueSequence.CopyTo(inputSpan);
-                else reader.ValueSpan.CopyTo(inputSpan);
+                data.CopyTo(inputSpan);
 
                 var outputSpan = _scratchBuffer.AsSpan(halfBuffer);
-                var status = Base64.DecodeFromUtf8(inputSpan, outputSpan, out _, out var written);
+                var status2 = Base64.DecodeFromUtf8(inputSpan, outputSpan, out _, out var written2);
 
-                if (status == OperationStatus.Done)
-                    _destinationStream.Write(_scratchBuffer, halfBuffer, written);
-                else if (reader.TryGetBytesFromBase64(out var bytes))
-                    _destinationStream.Write(bytes);
+                if (status2 == OperationStatus.Done)
+                    await _destinationStream.WriteAsync(_scratchBuffer.AsMemory(halfBuffer, written2));
             }
             else
             {
-                if (reader.HasValueSequence)
-                    foreach (var segment in reader.ValueSequence)
-                        _destinationStream.Write(segment.Span);
-                else
-                    _destinationStream.Write(reader.ValueSpan);
+                foreach (var segment in data)
+                {
+                    await _destinationStream.WriteAsync(segment);
+                }
             }
         }
     }
