@@ -152,7 +152,6 @@ public class CdpPage : IAsyncDisposable
         
         await _semaphore.WaitAsync(cancellationToken);
 
-        // 1MB buffer handles 256KB chunks comfortably
         var scratchBuffer = ArrayPool<byte>.Shared.Rent(1024 * 1024);
 
         try
@@ -185,14 +184,16 @@ public class CdpPage : IAsyncDisposable
 
             try
             {
-                await CheckMemoryPressure();
                 var eof = false;
 
                 var handler = new IoReadResponseHandler(destinationStream, scratchBuffer);
 
+                var iteration = 0;
                 while (!eof)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
+
+                    if (iteration++ % 10 == 0) await CheckMemoryPressure();
 
                     // Reset the handler's TCS for the new request
                     handler.Reset();
@@ -200,13 +201,12 @@ public class CdpPage : IAsyncDisposable
                     await _dispatcher.SendCommandInternalAsync("IO.read", new
                     {
                         handle = streamHandle,
-                        size = 256 * 1024
+                        size = 512 * 1024
                     }, _sessionId, handler, cancellationToken);
 
                     eof = await handler.Task;
                 }
 
-                await destinationStream.FlushAsync(cancellationToken);
                 return zones;
             }
             finally
@@ -228,7 +228,10 @@ public class CdpPage : IAsyncDisposable
         if ((memoryInfo.TotalAvailableMemoryBytes - memoryInfo.MemoryLoadBytes) / 1024 / 1024 <
             _options.MemoryThresholdMb)
         {
-            GC.Collect(2, GCCollectionMode.Optimized, false);
+            if (memoryInfo.MemoryLoadBytes > memoryInfo.TotalAvailableMemoryBytes * 0.9)
+            {
+                GC.Collect(2, GCCollectionMode.Optimized, false);
+            }
             await Task.Yield();
         }
     }
@@ -417,7 +420,7 @@ public class CdpPage : IAsyncDisposable
 
         public Task<bool> Task => _tcs.Task;
 
-        public async void Handle(ReadOnlySequence<byte> message)
+        public void Handle(ReadOnlySequence<byte> message)
         {
             try
             {
@@ -442,7 +445,7 @@ public class CdpPage : IAsyncDisposable
                             if (reader.ValueTextEquals("data"u8))
                             {
                                 reader.Read();
-                                data = reader.HasValueSequence ? reader.ValueSequence : new ReadOnlySequence<byte>(reader.ValueSpan.ToArray());
+                                data = reader.ValueSequence;
                             }
                             else if (reader.ValueTextEquals("eof"u8))
                             {
@@ -480,10 +483,25 @@ public class CdpPage : IAsyncDisposable
 
                 if (!data.IsEmpty)
                 {
-                    await ProcessDataAsync(data, base64Encoded);
+                    var task = ProcessDataAsync(data, base64Encoded);
+                    if (task.IsCompleted)
+                    {
+                        task.GetAwaiter().GetResult();
+                        _tcs.TrySetResult(eof);
+                    }
+                    else
+                    {
+                        task.ContinueWith(t =>
+                        {
+                            if (t.IsFaulted) _tcs.TrySetException(t.Exception!.InnerException!);
+                            else _tcs.TrySetResult(eof);
+                        }, TaskContinuationOptions.ExecuteSynchronously);
+                    }
                 }
-
-                _tcs.TrySetResult(eof);
+                else
+                {
+                    _tcs.TrySetResult(eof);
+                }
             }
             catch (Exception ex)
             {
@@ -510,21 +528,19 @@ public class CdpPage : IAsyncDisposable
             if (isBase64)
             {
                 var payloadLength = (int)data.Length;
-                var halfBuffer = _scratchBuffer.Length / 2;
-
-                if (payloadLength > halfBuffer)
+                
+                if (payloadLength > 512 * 1024)
                 {
-                    // Fallback should strictly never happen with 256KB chunks vs 1MB buffer
                     var input = ArrayPool<byte>.Shared.Rent(payloadLength);
                     try
                     {
                         data.CopyTo(input);
                         
-                        // We need to decode base64 from the input buffer
                         var status = Base64.DecodeFromUtf8(input.AsSpan(0, payloadLength), input, out _, out var written);
                         if (status == OperationStatus.Done)
                         {
-                            await _destinationStream.WriteAsync(input.AsMemory(0, written));
+                            var writeTask = _destinationStream.WriteAsync(input.AsMemory(0, written));
+                            if (!writeTask.IsCompleted) await writeTask;
                         }
                     }
                     finally
@@ -535,20 +551,39 @@ public class CdpPage : IAsyncDisposable
                     return;
                 }
 
-                var inputSpan = _scratchBuffer.AsSpan(0, payloadLength);
-                data.CopyTo(inputSpan);
-
-                var outputSpan = _scratchBuffer.AsSpan(halfBuffer);
-                var status2 = Base64.DecodeFromUtf8(inputSpan, outputSpan, out _, out var written2);
+                data.CopyTo(_scratchBuffer);
+                
+                var status2 = Base64.DecodeFromUtf8(_scratchBuffer.AsSpan(0, payloadLength), _scratchBuffer.AsSpan(512 * 1024), out _, out var written2);
 
                 if (status2 == OperationStatus.Done)
-                    await _destinationStream.WriteAsync(_scratchBuffer.AsMemory(halfBuffer, written2));
+                {
+                    var writeTask2 = _destinationStream.WriteAsync(_scratchBuffer.AsMemory(512 * 1024, written2));
+                    if (!writeTask2.IsCompleted) await writeTask2;
+                }
             }
             else
             {
-                foreach (var segment in data)
+                if (data.IsSingleSegment)
                 {
-                    await _destinationStream.WriteAsync(segment);
+                    var writeTask3 = _destinationStream.WriteAsync(data.First);
+                    if (!writeTask3.IsCompleted) await writeTask3;
+                }
+                else
+                {
+                    if (data.Length <= _scratchBuffer.Length)
+                    {
+                        data.CopyTo(_scratchBuffer);
+                        var writeTask4 = _destinationStream.WriteAsync(_scratchBuffer.AsMemory(0, (int)data.Length));
+                        if (!writeTask4.IsCompleted) await writeTask4;
+                    }
+                    else
+                    {
+                        foreach (var segment in data)
+                        {
+                            var writeTask5 = _destinationStream.WriteAsync(segment);
+                            if (!writeTask5.IsCompleted) await writeTask5;
+                        }
+                    }
                 }
             }
         }
