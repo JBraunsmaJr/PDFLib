@@ -4,7 +4,8 @@ _layout: landing
 
 # PDF Lib
 
-[![NuGet version](https://img.shields.io/nuget/v/YourPackageName.svg)](https://www.nuget.org/packages/Badger.PDFLib.Chromium/)
+[![NuGet version](https://img.shields.io/nuget/v/Badger.PDFLib.Chromium.svg)](https://www.nuget.org/packages/Badger.PDFLib.Chromium)
+[![NuGet downloads](https://img.shields.io/nuget/dt/Badger.PDFLib.Chromium.svg)](https://www.nuget.org/packages/Badger.PDFLib.Chromium)
 
 [Github](https://github.com/JBraunsmaJr/PDFLib)
 
