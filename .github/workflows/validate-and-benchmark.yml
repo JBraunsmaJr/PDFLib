@@ -79,6 +79,7 @@ jobs:
       - name: Download Chromium and Pack
         run: |
           dotnet build PDFLib.Chromium/PDFLib.Chromium.csproj -c Release -r linux-x64
+          dotnet build PDFLib.Chromium.Hosting/PDFLib.Chromium.Hosting.csproj -c Release
           dotnet pack PDFLib.Chromium/PDFLib.Chromium.csproj -c Release -r linux-x64 --no-build -p:DownloadLatestChromium=true -p:BuildNumber=${{ github.run_number }} --output nupkg
           dotnet pack PDFLib.Chromium.Hosting/PDFLib.Chromium.Hosting.csproj -c Release --no-build -p:BuildNumber=${{ github.run_number }} --output nupkg
       - name: Install DocFX
