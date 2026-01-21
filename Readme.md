@@ -138,3 +138,65 @@ apt-get update && apt-get install -y --no-install-recommends \
 ```
 
 For a complete reference on how to set up the environment, see the [Dockerfile](./PDFLib.Chromium.TestConsole/Dockerfile).
+
+# PDFLib.Chromium.Hosting
+
+This library provides a seamless way to integrate `PDFLib.Chromium` into your .NET web applications as a singleton service.
+
+## Installation
+
+Add the `PDFLib.Chromium.Hosting` package to your project.
+
+## Configuration
+
+In your `Program.cs`, you can add the PDF service:
+
+```csharp
+// Using Action
+builder.Services.AddChromiumBrowser(options => {
+    options.MaxConcurrentRenders = 10;
+});
+
+// OR Using IConfiguration
+builder.Services.AddPdfService(builder.Configuration.GetSection("Chromium"));
+```
+
+```json
+{ 
+  "Chromium": {
+    "MaxConcurrentRenders": 10
+  }
+}
+```
+
+## Usage
+
+Inject `PdfService` into your controllers or services:
+
+```csharp
+public class PdfController : ControllerBase
+{
+    private readonly PdfService _pdfService;
+
+    public PdfController(PdfService pdfService)
+    {
+        _pdfService = pdfService;
+    }
+
+    [HttpGet("generate")]
+    public async Task GetPdf()
+    {
+        Response.ContentType = "application/pdf";
+        await _pdfService.RenderPdfAsync("<h1>Hello World</h1>", Response.Body);
+    }
+    
+    [HttpGet("sign")]
+    public async Task GetSignedPdf()
+    {
+        Response.ContentType = "application/pdf";
+        await _pdfService.RenderSignedPdfAsync("<div id="signature-area-1">Sign here</div>", Response.Body, signer => {
+            signer.AddCertificate(new X509Certificate2("cert.pfx", "password"));
+        });
+    }
+}
+```

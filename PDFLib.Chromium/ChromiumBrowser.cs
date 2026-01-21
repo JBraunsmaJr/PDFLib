@@ -157,7 +157,7 @@ public class ChromiumBrowser : IDisposable
         while (!ready && Stopwatch.GetTimestamp() - start < Stopwatch.Frequency * 5)
             try
             {
-                await _dispatcher.SendCommandAsync("Browser.getVersion");
+                using var res = await _dispatcher.SendCommandAsync("Browser.getVersion");
                 ready = true;
             }
             catch
@@ -174,11 +174,11 @@ public class ChromiumBrowser : IDisposable
     /// <returns>A task that represents the asynchronous creation operation. The task result is a <see cref="CdpPage"/>.</returns>
     public async Task<CdpPage> CreatePageAsync()
     {
-        var targetRes = await _dispatcher.SendCommandAsync("Target.createTarget", new { url = "about:blank" });
-        var targetId = targetRes.GetProperty("targetId").GetString();
+        using var targetRes = await _dispatcher.SendCommandAsync("Target.createTarget", new { url = "about:blank" });
+        var targetId = targetRes?.RootElement.GetProperty("targetId").GetString();
 
-        var attachRes = await _dispatcher.SendCommandAsync("Target.attachToTarget", new { targetId, flatten = true });
-        var sessionId = attachRes.GetProperty("sessionId").GetString();
+        using var attachRes = await _dispatcher.SendCommandAsync("Target.attachToTarget", new { targetId, flatten = true });
+        var sessionId = attachRes?.RootElement.GetProperty("sessionId").GetString();
 
         return new CdpPage(_dispatcher, sessionId, targetId, _renderSemaphore, _options);
     }

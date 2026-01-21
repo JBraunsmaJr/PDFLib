@@ -1,0 +1,28 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+        <Version Condition="'$(Version)' == ''">1.0.0</Version>
+        <Authors>JBraunsmaJr</Authors>
+        <PackageId>Badger.PDFLib.Chromium.Hosting</PackageId>
+        <Description>Hosting extensions for Badger.PDFLib.Chromium. Provides easy integration with IServiceCollection and IHostedService for managing the Chromium browser lifecycle.</Description>
+        <PackageTags>pdf;chromium;html-to-pdf;cdp;aspnetcore;hosting</PackageTags>
+        <PackageProjectUrl>https://jbraunsmajr.github.io/PDFLib/index.html</PackageProjectUrl>
+        <RepositoryUrl>https://github.com/JBraunsmaJr/PDFLib</RepositoryUrl>
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.1" />
+      <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.1" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\PDFLib.Chromium\PDFLib.Chromium.csproj" />
+    </ItemGroup>
+
+</Project>

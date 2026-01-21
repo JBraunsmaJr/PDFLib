@@ -1,6 +1,6 @@
 ﻿# NuGet Deployment & Prerequisites
 
-**PDFLib.Chromium** is available as a NuGet package.
+**PDFLib.Chromium** and **PDFLib.Chromium.Hosting** are available as NuGet packages.
 
 ## PDFLib.Chromium
 This library requires **Headless Chromium** and specific system libraries to function.
@@ -30,3 +30,69 @@ apt-get update && apt-get install -y --no-install-recommends \
 ```
 
 For a complete reference on how to set up the environment, see the [Dockerfile](https://github.com/JBraunsmaJr/PDFLib/blob/main/PDFLib.Chromium.TestConsole/Dockerfile).
+
+
+## PDFLib.Chromium.Hosting
+The hosting package provides integration with Microsoft.Extensions.DependencyInjection and Microsoft.Extensions.Hosting.
+
+### Installation
+
+Depends on Badger.PDFLib.Chromium
+
+```bash
+dotnet add package Badger.PDFLib.Chromium.Hosting Badger.PDFLib.Chromium
+```
+
+### Dependency Injection
+
+In your `Program.cs`, you can add the PDF service:
+
+```csharp
+// Using Action
+builder.Services.AddPdfService(options => {
+    options.MaxConcurrentRenders = 10;
+});
+
+// OR Using IConfiguration
+builder.Services.AddPdfService(builder.Configuration.GetSection("Chromium"));
+```
+
+```json
+{ 
+  "Chromium": {
+    "MaxConcurrentRenders": 10
+  }
+}
+```
+
+## Usage
+
+Inject `PdfService` into your controllers or services:
+
+```csharp
+public class PdfController : ControllerBase
+{
+    private readonly PdfService _pdfService;
+
+    public PdfController(PdfService pdfService)
+    {
+        _pdfService = pdfService;
+    }
+
+    [HttpGet("generate")]
+    public async Task GetPdf()
+    {
+        Response.ContentType = "application/pdf";
+        await _pdfService.RenderPdfAsync("<h1>Hello World</h1>", Response.Body);
+    }
+    
+    [HttpGet("sign")]
+    public async Task GetSignedPdf()
+    {
+        Response.ContentType = "application/pdf";
+        await _pdfService.RenderSignedPdfAsync("<div id="signature-area-1">Sign here</div>", Response.Body, signer => {
+            signer.AddCertificate(new X509Certificate2("cert.pfx", "password"));
+        });
+    }
+}
+```
