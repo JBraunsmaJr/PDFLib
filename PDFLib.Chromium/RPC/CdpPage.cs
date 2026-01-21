@@ -103,14 +103,14 @@ public class CdpPage : IAsyncDisposable
             arg = signatureData.ToDictionary(k => k.Key, v => new { name = v.Value.name, date = v.Value.date });
         }
 
-        var res = await _dispatcher.SendCommandAsync("Runtime.evaluate", new
+        using var res = await _dispatcher.SendCommandAsync("Runtime.evaluate", new
         {
             expression = $"({script})({JsonSerializer.Serialize(arg)})",
             returnByValue = true,
             awaitPromise = true
         }, _sessionId);
 
-        if (!res.TryGetProperty("result", out var result) || !result.TryGetProperty("value", out var value))
+        if (res == null || !res.RootElement.TryGetProperty("result", out var result) || !result.TryGetProperty("value", out var value))
             return new List<SignatureZone>();
         
         var options = new JsonSerializerOptions
@@ -152,8 +152,6 @@ public class CdpPage : IAsyncDisposable
         
         await _semaphore.WaitAsync(cancellationToken);
 
-        var scratchBuffer = ArrayPool<byte>.Shared.Rent(1024 * 1024);
-
         try
         {
             if (signatureData is { Count: > 0 })
@@ -161,7 +159,7 @@ public class CdpPage : IAsyncDisposable
                 zones = await GetSignatureZonesAsync(signatureData);
             }
             
-            var result = await _dispatcher.SendCommandAsync("Page.printToPDF", new
+            using var resultDoc = await _dispatcher.SendCommandAsync("Page.printToPDF", new
             {
                 printBackground = true,
                 transferMode = "ReturnAsStream",
@@ -169,18 +167,28 @@ public class CdpPage : IAsyncDisposable
             }, _sessionId, cancellationToken);
 
             string? streamHandle = null;
-            if (result.TryGetProperty("streamHandle", out var streamHandleProp))
+            if (resultDoc != null && resultDoc.RootElement.TryGetProperty("streamHandle", out var streamHandleProp))
                 streamHandle = streamHandleProp.GetString();
-            else if (result.TryGetProperty("stream", out var streamProp))
+            else if (resultDoc != null && resultDoc.RootElement.TryGetProperty("stream", out var streamProp))
                 streamHandle = streamProp.GetString();
 
             if (string.IsNullOrEmpty(streamHandle))
             {
-                if (!result.TryGetProperty("data", out var dataProp)) throw new Exception("No handle or data");
-                if (dataProp.ValueKind == JsonValueKind.String && dataProp.TryGetBytesFromBase64(out var bytes))
-                    await destinationStream.WriteAsync(bytes, cancellationToken);
+                if (resultDoc == null || !resultDoc.RootElement.TryGetProperty("data", out var dataProp)) throw new Exception("No handle or data");
+                if (dataProp.ValueKind == JsonValueKind.String)
+                {
+                    // For small data that comes in the first response
+                    var base64String = dataProp.GetString();
+                    if (base64String != null)
+                    {
+                        var bytes = Convert.FromBase64String(base64String);
+                        await destinationStream.WriteAsync(bytes, cancellationToken);
+                    }
+                }
                 return zones;
             }
+
+            var scratchBuffer = ArrayPool<byte>.Shared.Rent(1024 * 1024);
 
             try
             {
@@ -201,7 +209,7 @@ public class CdpPage : IAsyncDisposable
                     await _dispatcher.SendCommandInternalAsync("IO.read", new
                     {
                         handle = streamHandle,
-                        size = 512 * 1024
+                        size = 256 * 1024
                     }, _sessionId, handler, cancellationToken);
 
                     eof = await handler.Task;
@@ -211,13 +219,13 @@ public class CdpPage : IAsyncDisposable
             }
             finally
             {
-                await _dispatcher.SendCommandAsync("IO.close", new { handle = streamHandle }, _sessionId,
+                ArrayPool<byte>.Shared.Return(scratchBuffer);
+                using var closeRes = await _dispatcher.SendCommandAsync("IO.close", new { handle = streamHandle }, _sessionId,
                     CancellationToken.None);
             }
         }
         finally
         {
-            ArrayPool<byte>.Shared.Return(scratchBuffer);
             _semaphore.Release();
         }
     }
@@ -245,26 +253,30 @@ public class CdpPage : IAsyncDisposable
     {
         if (!_pageEnabled)
         {
-            await _dispatcher.SendCommandAsync("Page.enable", null, _sessionId);
+            using var res = await _dispatcher.SendCommandAsync("Page.enable", null, _sessionId);
             _pageEnabled = true;
         }
 
         if (_cachedFrameId == null)
         {
-            var ft = await _dispatcher.SendCommandAsync("Page.getFrameTree", null, _sessionId);
-            _cachedFrameId = ft.GetProperty("frameTree").GetProperty("frame").GetProperty("id").GetString();
+            using var ft = await _dispatcher.SendCommandAsync("Page.getFrameTree", null, _sessionId);
+            _cachedFrameId = ft?.RootElement.GetProperty("frameTree").GetProperty("frame").GetProperty("id").GetString();
         }
 
         if (_options.WaitStrategy.HasFlag(WaitStrategy.NetworkIdle) && !_networkEnabled)
         {
-            await _dispatcher.SendCommandAsync("Network.enable", null, _sessionId);
+            using var res = await _dispatcher.SendCommandAsync("Network.enable", null, _sessionId);
             _networkEnabled = true;
         }
 
-        await _dispatcher.SendCommandAsync("Page.setDocumentContent", new { frameId = _cachedFrameId, html },
+        using var resSet = await _dispatcher.SendCommandAsync("Page.setDocumentContent", new { frameId = _cachedFrameId, html },
             _sessionId);
-        await WaitForConditionsAsync(DateTime.UtcNow,
-            _options.WaitTimeoutMs.HasValue ? TimeSpan.FromMilliseconds(_options.WaitTimeoutMs.Value) : null);
+
+        if (_options.WaitStrategy != 0)
+        {
+            await WaitForConditionsAsync(DateTime.UtcNow,
+                _options.WaitTimeoutMs.HasValue ? TimeSpan.FromMilliseconds(_options.WaitTimeoutMs.Value) : null);
+        }
     }
 
     /// <summary>
@@ -279,9 +291,18 @@ public class CdpPage : IAsyncDisposable
             awaitPromise = true
         }, _sessionId);
 
-        return res.TryGetProperty("exceptionDetails", out var exception) 
-            ? throw new Exception($"JS Exception: {exception.GetRawText()}") 
-            : res.GetProperty("result");
+        if (res == null) throw new Exception("No response from CDP");
+        
+        try
+        {
+            return res.RootElement.TryGetProperty("exceptionDetails", out var exception)
+                ? throw new Exception($"JS Exception: {exception.GetRawText()}")
+                : res.RootElement.GetProperty("result").Clone();
+        }
+        finally
+        {
+            res.Dispose();
+        }
     }
     
     /// <summary>
@@ -303,8 +324,6 @@ public class CdpPage : IAsyncDisposable
     
     private async Task WaitForConditionsAsync(DateTime startTime, TimeSpan? timeout)
     {
-        if (_options.WaitStrategy == 0) return;
-
         var activeRequests = new ConcurrentDictionary<string, byte>();
         Action<JsonElement>? requestStarted = null;
         Action<JsonElement>? requestFinished = null;
@@ -338,8 +357,8 @@ public class CdpPage : IAsyncDisposable
                 // Check Load strategy
                 if (_options.WaitStrategy.HasFlag(WaitStrategy.Load))
                 {
-                    var readyStateRes = await _dispatcher.SendCommandAsync("Runtime.evaluate", new { expression = "document.readyState" }, _sessionId);
-                    if (readyStateRes.TryGetProperty("result"u8, out var result) && result.TryGetProperty("value"u8, out var value))
+                    using var readyStateRes = await _dispatcher.SendCommandAsync("Runtime.evaluate", new { expression = "document.readyState" }, _sessionId);
+                    if (readyStateRes != null && readyStateRes.RootElement.TryGetProperty("result"u8, out var result) && result.TryGetProperty("value"u8, out var value))
                     {
                         if (value.ValueEquals("complete"u8)) return;
                     }
@@ -360,12 +379,17 @@ public class CdpPage : IAsyncDisposable
                         lastActiveTime = DateTime.UtcNow;
                     }
                 }
+                else if (!_options.WaitStrategy.HasFlag(WaitStrategy.JavascriptVariable))
+                {
+                    // No other strategy, just return
+                    return;
+                }
 
                 // Check JavascriptVariable strategy
                 if (_options.WaitStrategy.HasFlag(WaitStrategy.JavascriptVariable) && !string.IsNullOrEmpty(_options.WaitVariable))
                 {
-                    var res = await _dispatcher.SendCommandAsync("Runtime.evaluate", new { expression = _options.WaitVariable }, _sessionId);
-                    if (res.TryGetProperty("result"u8, out var result) && result.TryGetProperty("value"u8, out var value))
+                    using var res = await _dispatcher.SendCommandAsync("Runtime.evaluate", new { expression = _options.WaitVariable }, _sessionId);
+                    if (res != null && res.RootElement.TryGetProperty("result"u8, out var result) && result.TryGetProperty("value"u8, out var value))
                     {
                         var match = value.ValueKind switch
                         {
@@ -420,7 +444,7 @@ public class CdpPage : IAsyncDisposable
 
         public Task<bool> Task => _tcs.Task;
 
-        public void Handle(ReadOnlySequence<byte> message)
+        public async ValueTask Handle(ReadOnlySequence<byte> message)
         {
             try
             {
@@ -445,7 +469,22 @@ public class CdpPage : IAsyncDisposable
                             if (reader.ValueTextEquals("data"u8))
                             {
                                 reader.Read();
-                                data = reader.ValueSequence;
+                                if (reader.HasValueSequence)
+                                {
+                                    data = reader.ValueSequence;
+                                }
+                                else
+                                {
+                                    /*
+                                     * TODO: Investigate ValueSequence
+                                     * If a single segment, reader.ValueSpan contains the data.
+                                     * To avoid Utf8JsonReader limitations, we can't easily get a ReadOnlySequence
+                                     * from a Span without a copy if we want to avoid pinning.
+                                     * Since we're in a high-performance path, we'll use `ToArray` for now.
+                                     * We know that for large data, it will likely be a ValueSequence.
+                                     */
+                                    data = new ReadOnlySequence<byte>(reader.ValueSpan.ToArray());
+                                }
                             }
                             else if (reader.ValueTextEquals("eof"u8))
                             {
@@ -483,25 +522,10 @@ public class CdpPage : IAsyncDisposable
 
                 if (!data.IsEmpty)
                 {
-                    var task = ProcessDataAsync(data, base64Encoded);
-                    if (task.IsCompleted)
-                    {
-                        task.GetAwaiter().GetResult();
-                        _tcs.TrySetResult(eof);
-                    }
-                    else
-                    {
-                        task.ContinueWith(t =>
-                        {
-                            if (t.IsFaulted) _tcs.TrySetException(t.Exception!.InnerException!);
-                            else _tcs.TrySetResult(eof);
-                        }, TaskContinuationOptions.ExecuteSynchronously);
-                    }
+                    await ProcessDataAsync(data, base64Encoded);
                 }
-                else
-                {
-                    _tcs.TrySetResult(eof);
-                }
+                
+                _tcs.TrySetResult(eof);
             }
             catch (Exception ex)
             {
@@ -522,30 +546,33 @@ public class CdpPage : IAsyncDisposable
             if (_tcs.Task.IsCompleted)
                 _tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         }
-
+        
+        private const int PayloadBufferThreshold = 512 * 1024;
+        
         private async Task ProcessDataAsync(ReadOnlySequence<byte> data, bool isBase64)
         {
             if (isBase64)
             {
                 var payloadLength = (int)data.Length;
                 
-                if (payloadLength > 512 * 1024)
+                if (payloadLength > PayloadBufferThreshold)
                 {
                     var input = ArrayPool<byte>.Shared.Rent(payloadLength);
+                    var output = ArrayPool<byte>.Shared.Rent(Base64.GetMaxDecodedFromUtf8Length(payloadLength));
                     try
                     {
                         data.CopyTo(input);
                         
-                        var status = Base64.DecodeFromUtf8(input.AsSpan(0, payloadLength), input, out _, out var written);
+                        var status = Base64.DecodeFromUtf8(input.AsSpan(0, payloadLength), output, out _, out var written);
                         if (status == OperationStatus.Done)
                         {
-                            var writeTask = _destinationStream.WriteAsync(input.AsMemory(0, written));
-                            if (!writeTask.IsCompleted) await writeTask;
+                            await _destinationStream.WriteAsync(output.AsMemory(0, written));
                         }
                     }
                     finally
                     {
                         ArrayPool<byte>.Shared.Return(input);
+                        ArrayPool<byte>.Shared.Return(output);
                     }
 
                     return;
@@ -557,31 +584,27 @@ public class CdpPage : IAsyncDisposable
 
                 if (status2 == OperationStatus.Done)
                 {
-                    var writeTask2 = _destinationStream.WriteAsync(_scratchBuffer.AsMemory(512 * 1024, written2));
-                    if (!writeTask2.IsCompleted) await writeTask2;
+                    await _destinationStream.WriteAsync(_scratchBuffer.AsMemory(512 * 1024, written2));
                 }
             }
             else
             {
                 if (data.IsSingleSegment)
                 {
-                    var writeTask3 = _destinationStream.WriteAsync(data.First);
-                    if (!writeTask3.IsCompleted) await writeTask3;
+                    await _destinationStream.WriteAsync(data.First);
                 }
                 else
                 {
                     if (data.Length <= _scratchBuffer.Length)
                     {
                         data.CopyTo(_scratchBuffer);
-                        var writeTask4 = _destinationStream.WriteAsync(_scratchBuffer.AsMemory(0, (int)data.Length));
-                        if (!writeTask4.IsCompleted) await writeTask4;
+                        await _destinationStream.WriteAsync(_scratchBuffer.AsMemory(0, (int)data.Length));
                     }
                     else
                     {
                         foreach (var segment in data)
                         {
-                            var writeTask5 = _destinationStream.WriteAsync(segment);
-                            if (!writeTask5.IsCompleted) await writeTask5;
+                            await _destinationStream.WriteAsync(segment);
                         }
                     }
                 }

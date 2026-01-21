@@ -131,6 +131,8 @@ public class CdpDispatcher
         }
     }
 
+    private readonly JsonResponseHandler _reusableJsonResponseHandler = new();
+
     /// <summary>
     /// Sends a command to the CDP
     /// </summary>
@@ -138,11 +140,12 @@ public class CdpDispatcher
     /// <param name="params">Parameters to pass into CDP</param>
     /// <param name="sessionId">SessionID is how we identify where to send the data to</param>
     /// <param name="cancellationToken"></param>
-    /// <returns>JsonElement that CDP returns</returns>
-    public async Task<JsonElement> SendCommandAsync(string method, object? @params = null, string? sessionId = null,
+    /// <returns>JsonDocument that CDP returns. Caller MUST dispose it.</returns>
+    public async Task<JsonDocument?> SendCommandAsync(string method, object? @params = null, string? sessionId = null,
         CancellationToken cancellationToken = default)
     {
-        var handler = new JsonResponseHandler();
+        var handler = _reusableJsonResponseHandler;
+        handler.Reset();
         await SendCommandInternalAsync(method, @params, sessionId, handler, cancellationToken);
         return await handler.Task;
     }
@@ -155,7 +158,7 @@ public class CdpDispatcher
             {
                 var result = await _pipeReader.ReadAsync();
                 var buffer = result.Buffer;
-                while (TryReadMessage(ref buffer, out var message)) ProcessMessage(message);
+                while (TryReadMessage(ref buffer, out var message)) await ProcessMessageAsync(message);
                 _pipeReader.AdvanceTo(buffer.Start, buffer.End);
                 if (result.IsCompleted) break;
             }
@@ -184,7 +187,7 @@ public class CdpDispatcher
         return true;
     }
 
-    private void ProcessMessage(ReadOnlySequence<byte> message)
+    private async ValueTask ProcessMessageAsync(ReadOnlySequence<byte> message)
     {
         var reader = new Utf8JsonReader(message);
         int? id = null;
@@ -216,9 +219,14 @@ public class CdpDispatcher
             }
         }
 
-        if (id.HasValue && _pendingRequests.TryRemove(id.Value, out var handler)) handler.Handle(message);
+        if (id.HasValue && _pendingRequests.TryRemove(id.Value, out var handler))
+        {
+            await handler.Handle(message);
+            return;
+        }
 
         if (method == null || !_eventHandlers.TryGetValue(method, out var handlers)) return;
+        if (handlers.Count == 0) return;
 
         var eventReader = new Utf8JsonReader(message);
         JsonElement paramsElement = default;
@@ -236,9 +244,17 @@ public class CdpDispatcher
             if (eventReader.TokenType == JsonTokenType.PropertyName) eventReader.Skip();
         }
 
+        // Use a local copy of the handlers list to minimize lock duration
+        Action<JsonElement>[]? handlersArray = null;
         lock (handlers)
         {
-            foreach (var h in handlers) h(paramsElement);
+            if (handlers.Count > 0)
+                handlersArray = handlers.ToArray();
+        }
+
+        if (handlersArray != null)
+        {
+            foreach (var h in handlersArray) h(paramsElement);
         }
     }
 
@@ -272,7 +288,7 @@ public class CdpDispatcher
         /// Handles the incoming message.
         /// </summary>
         /// <param name="message">The raw message bytes.</param>
-        void Handle(ReadOnlySequence<byte> message);
+        ValueTask Handle(ReadOnlySequence<byte> message);
 
         /// <summary>
         /// Sets an exception if the command failed.
@@ -283,16 +299,21 @@ public class CdpDispatcher
 
     private class JsonResponseHandler : IResponseHandler
     {
-        private readonly TaskCompletionSource<JsonElement> _tcs =
+        private TaskCompletionSource<JsonDocument?> _tcs =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public Task<JsonElement> Task => _tcs.Task;
+        public Task<JsonDocument?> Task => _tcs.Task;
 
-        public void Handle(ReadOnlySequence<byte> message)
+        public void Reset()
+        {
+            if (_tcs.Task.IsCompleted)
+                _tcs = new TaskCompletionSource<JsonDocument?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+
+        public ValueTask Handle(ReadOnlySequence<byte> message)
         {
             try
             {
-                // Optimization: Scan for result/error before parsing full document
                 var reader = new Utf8JsonReader(message);
                 while (reader.Read())
                 {
@@ -301,9 +322,8 @@ public class CdpDispatcher
                     if (reader.ValueTextEquals("result"u8))
                     {
                         reader.Read();
-                        using var doc = JsonDocument.ParseValue(ref reader);
-                        _tcs.TrySetResult(doc.RootElement.Clone());
-                        return;
+                        _tcs.TrySetResult(JsonDocument.ParseValue(ref reader));
+                        return ValueTask.CompletedTask;
                     }
 
                     if (reader.ValueTextEquals("error"u8))
@@ -311,18 +331,20 @@ public class CdpDispatcher
                         reader.Read();
                         using var doc = JsonDocument.ParseValue(ref reader);
                         _tcs.TrySetException(new Exception($"CDP Error: {doc.RootElement.GetRawText()}"));
-                        return;
+                        return ValueTask.CompletedTask;
                     }
 
                     reader.Skip();
                 }
 
-                _tcs.TrySetResult(default);
+                _tcs.TrySetResult(null);
             }
             catch (Exception ex)
             {
                 _tcs.TrySetException(ex);
             }
+
+            return ValueTask.CompletedTask;
         }
 
         public void SetException(Exception ex)
