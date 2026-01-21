@@ -12,6 +12,13 @@ public class PdfService : IHostedService
     private readonly ChromiumBrowser _browser;
     private readonly BrowserOptions _options;
     private readonly ILogger<PdfService> _logger;
+    
+    /// <summary>
+    /// Initializes a new instance of the <see cref="PdfService"/> class.
+    /// </summary>
+    /// <param name="browser">The browser instance.</param>
+    /// <param name="options">The browser options.</param>
+    /// <param name="logger">The logger instance.</param>
     public PdfService(ChromiumBrowser browser, IOptions<BrowserOptions> options, ILogger<PdfService> logger)
     {
         _browser = browser;
@@ -53,12 +60,14 @@ public class PdfService : IHostedService
         await destinationStream.WriteAsync(signedBytes, cancellationToken);
     }
 
+    /// <inheritdoc />
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         _logger.LogInformation("Starting ChromiumBrowser Service...");
         await _browser.StartAsync(_options);
     }
 
+    /// <inheritdoc />
     public Task StopAsync(CancellationToken cancellationToken)
     {
         _logger.LogInformation("Stopping ChromiumBrowser Service...");

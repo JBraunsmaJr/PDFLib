@@ -24,6 +24,8 @@ jobs:
         run: |
           chmod +x PDFLib.Chromium.TestConsole/test.sh
           ./PDFLib.Chromium.TestConsole/test.sh
+      - name: Run Hosting Tests
+        run: dotnet test PDFLib.Chromium.Hosting.Test/PDFLib.Chromium.Hosting.Test.csproj
 
   run-benchmarks:
     needs: validate-test-sh
@@ -73,10 +75,12 @@ jobs:
           mkdir -p PDFLib.Chromium.TestConsole/packages
           dotnet restore PDFLib.Chromium/PDFLib.Chromium.csproj
           dotnet restore PDFLib.Razor/PDFLib.Razor.csproj
+          dotnet restore PDFLib.Chromium.Hosting/PDFLib.Chromium.Hosting.csproj
       - name: Download Chromium and Pack
         run: |
           dotnet build PDFLib.Chromium/PDFLib.Chromium.csproj -c Release -r linux-x64
           dotnet pack PDFLib.Chromium/PDFLib.Chromium.csproj -c Release -r linux-x64 --no-build -p:DownloadLatestChromium=true -p:BuildNumber=${{ github.run_number }} --output nupkg
+          dotnet pack PDFLib.Chromium.Hosting/PDFLib.Chromium.Hosting.csproj -c Release --no-build -p:BuildNumber=${{ github.run_number }} --output nupkg
       - name: Install DocFX
         run: dotnet tool install -g docfx
       - name: Build DocFX

@@ -149,7 +149,7 @@ Add the `PDFLib.Chromium.Hosting` package to your project.
 
 ## Configuration
 
-In your `Program.cs`, you can add the Chromium browser service:
+In your `Program.cs`, you can add the PDF service:
 
 ```csharp
 // Using Action
@@ -158,7 +158,7 @@ builder.Services.AddChromiumBrowser(options => {
 });
 
 // OR Using IConfiguration
-builder.Services.AddChromiumBrowser(builder.Configuration.GetSection("Chromium"));
+builder.Services.AddPdfService(builder.Configuration.GetSection("Chromium"));
 ```
 
 ```json
@@ -171,14 +171,14 @@ builder.Services.AddChromiumBrowser(builder.Configuration.GetSection("Chromium")
 
 ## Usage
 
-Inject `ChromiumBrowserService` into your controllers or services:
+Inject `PdfService` into your controllers or services:
 
 ```csharp
 public class PdfController : ControllerBase
 {
-    private readonly ChromiumBrowserService _pdfService;
+    private readonly PdfService _pdfService;
 
-    public PdfController(ChromiumBrowserService pdfService)
+    public PdfController(PdfService pdfService)
     {
         _pdfService = pdfService;
     }

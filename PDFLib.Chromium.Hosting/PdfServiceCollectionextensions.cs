@@ -6,7 +6,7 @@ namespace PDFLib.Chromium.Hosting;
 /// <summary>
 /// Extension methods for adding <see cref="ChromiumBrowser"/> to the service collection.
 /// </summary>
-public static class PdfServiceCollectionextensions
+public static class PdfServiceCollectionExtensions
 {
     /// <param name="services">The <see cref="IServiceCollection"/> to add the service to.</param>
     extension(IServiceCollection services)
