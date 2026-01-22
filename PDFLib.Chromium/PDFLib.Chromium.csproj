@@ -28,7 +28,7 @@
 
     <ItemGroup>
       <None Include="build\Badger.PDFLib.Chromium.targets" PackagePath="build\Badger.PDFLib.Chromium.targets" />
-      <Content Include="runtimes\linux-x64\native\**\*" PackagePath="runtimes\linux-x64\native\" CopyToOutputDirectory="PreserveNewest" Pack="true" />
+      <Content Include="runtimes\linux-x64\native\**\*" PackagePath="runtimes/linux-x64/native/" CopyToOutputDirectory="PreserveNewest" Pack="true" />
     </ItemGroup>
 
     <ItemGroup>

@@ -60,7 +60,7 @@ RUN dotnet build "./PDFLib.Chromium.TestConsole.csproj" -c $BUILD_CONFIGURATION 
 
 FROM build AS publish
 ARG BUILD_CONFIGURATION=Release
-RUN dotnet publish "./PDFLib.Chromium.TestConsole.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
+RUN dotnet publish "./PDFLib.Chromium.TestConsole.csproj" -c $BUILD_CONFIGURATION -r linux-x64 --self-contained false -o /app/publish /p:UseAppHost=false
 
 FROM base AS final
 WORKDIR /app

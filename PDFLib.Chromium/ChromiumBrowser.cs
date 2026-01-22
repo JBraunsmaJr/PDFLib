@@ -95,13 +95,13 @@ public class ChromiumBrowser : IDisposable
         }
 
         /*
-         * For local builds it should be in
-         * builds/published
+         * For RID-specific builds (flattened output) or local builds 
+         * it should be in the root application directory
          */
-        var localPath = Path.Combine(baseDir, "chrome-headless-shell");
-        if (File.Exists(localPath))
+        var flattenedPath = Path.Combine(baseDir, "chrome-headless-shell");
+        if (File.Exists(flattenedPath))
         {
-            return localPath;
+            return flattenedPath;
         }
 
         // Fallback to system PATH
