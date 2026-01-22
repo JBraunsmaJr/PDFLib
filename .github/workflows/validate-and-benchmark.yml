@@ -5,10 +5,24 @@ on:
     branches: [ main ]
     paths-ignore:
       - 'assets/**'
+      - 'docs/**'
+      - 'api/**'
+      - 'index.md'
+      - 'toc.yml'
+      - 'docfx.json'
+      - '**/*.md'
+      - '**/*.yml'
   pull_request:
     branches: [ main ]
     paths-ignore:
       - 'assets/**'
+      - 'docs/**'
+      - 'api/**'
+      - 'index.md'
+      - 'toc.yml'
+      - 'docfx.json'
+      - '**/*.md'
+      - '**/*.yml'
   workflow_dispatch:
 
 jobs:
@@ -57,51 +71,3 @@ jobs:
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add assets/overview.png
           git diff --staged --quiet || (git commit -m "Update benchmarks overview chart" && git push)
-
-  build-docs:
-    needs: run-benchmarks
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # Fetch all history for proper versioning/branching if needed
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '10.0.x'
-      - name: Restore dependencies
-        run: |
-          mkdir -p PDFLib.Chromium.TestConsole/packages
-          dotnet restore PDFLib.Chromium/PDFLib.Chromium.csproj
-          dotnet restore PDFLib.Razor/PDFLib.Razor.csproj
-          dotnet restore PDFLib.Chromium.Hosting/PDFLib.Chromium.Hosting.csproj
-      - name: Download Chromium and Pack
-        run: |
-          dotnet build PDFLib.Chromium/PDFLib.Chromium.csproj -c Release -r linux-x64
-          dotnet build PDFLib.Chromium.Hosting/PDFLib.Chromium.Hosting.csproj -c Release
-          dotnet pack PDFLib.Chromium/PDFLib.Chromium.csproj -c Release -r linux-x64 --no-build -p:DownloadLatestChromium=true -p:BuildNumber=${{ github.run_number }} --output nupkg
-          dotnet pack PDFLib.Chromium.Hosting/PDFLib.Chromium.Hosting.csproj -c Release --no-build -p:BuildNumber=${{ github.run_number }} --output nupkg
-      - name: Install DocFX
-        run: dotnet tool install -g docfx
-      - name: Build DocFX
-        run: docfx docfx.json
-      - name: Upload Artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: _site
-
-  deploy-docs:
-    needs: build-docs
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4

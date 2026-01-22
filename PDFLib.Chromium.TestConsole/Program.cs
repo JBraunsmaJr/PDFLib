@@ -29,8 +29,8 @@ async Task RunSignatureSamples()
     await page.SetContentAsync(html);
     
     var signatureData = new Dictionary<string, (string name, string date)>();
-    signatureData["signature-area-1"] = ("Test Signer 1", DateTime.Now.ToString("yyyy.MM.dd HH:mm:ss"));
-    signatureData["signature-area-2"] = ("Test Signer 2", DateTime.Now.ToString("yyyy.MM.dd HH:mm:ss"));
+    signatureData["signature-area-1"] = new("Test Signer 1", DateTime.Now.ToString("yyyy.MM.dd HH:mm:ss"));
+    signatureData["signature-area-2"] = new("Test Signer 2", DateTime.Now.ToString("yyyy.MM.dd HH:mm:ss"));
 
     using var ms = new MemoryStream();
     var zones = await page.PrintToPdfAsync(ms, signatureData);
