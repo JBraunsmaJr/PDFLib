@@ -194,7 +194,7 @@ public class PdfController : ControllerBase
     public async Task GetSignedPdf()
     {
         Response.ContentType = "application/pdf";
-        await _pdfService.RenderSignedPdfAsync("<div id="signature-area-1">Sign here</div>", Response.Body, signer => {
+        await _pdfService.RenderSignedPdfAsync("<div id="signature-area-1">Sign here</div>", Response.Body, new(){ {"signature-area-1", new("Tester 1", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")} }, signer => {
             signer.AddCertificate(new X509Certificate2("cert.pfx", "password"));
         });
     }
