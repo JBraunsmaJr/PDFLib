@@ -4,13 +4,13 @@ on:
   push:
     branches: [ main ]
     paths-ignore:
-      - **/*.csproj
-      - **/*.cs
-      - **/*.sln
-      - **/*.slnx
-      - **/Dockerfile
-      - **/compose.yml
-      - **/*.sh
+      - '**/*.csproj'
+      - '**/*.cs'
+      - '**/*.sln'
+      - '**/*.slnx'
+      - '**/Dockerfile'
+      - '**/compose.yml'
+      - '**/*.sh'
   workflow_dispatch:
 
 jobs:
