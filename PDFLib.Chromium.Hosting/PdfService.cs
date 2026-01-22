@@ -49,7 +49,7 @@ public class PdfService : IHostedService
     public async Task RenderSignedPdfAsync(
         string html, 
         Stream destinationStream, 
-        Dictionary<string, (string Name, string Date)> signatureInfo, 
+        Dictionary<string, Signature> signatureInfo, 
         Action<PdfSigner> setupSigner, 
         CancellationToken cancellationToken = default)
     {

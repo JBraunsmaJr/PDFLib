@@ -93,14 +93,14 @@ public class CdpPage : IAsyncDisposable
     /// </summary>
     /// <param name="signatureData">Optional dictionary of signature data (name, date) to inject into the DOM.</param>
     /// <returns>A list of detected <see cref="SignatureZone"/> objects.</returns>
-    private async Task<List<SignatureZone>> GetSignatureZonesAsync(Dictionary<string, (string name, string date)>? signatureData = null)
+    private async Task<List<SignatureZone>> GetSignatureZonesAsync(Dictionary<string, Signature>? signatureData = null)
     {
         var script = FindSignatureAreasScript;
 
         object? arg = null;
         if (signatureData != null)
         {
-            arg = signatureData.ToDictionary(k => k.Key, v => new { name = v.Value.name, date = v.Value.date });
+            arg = signatureData.ToDictionary(k => k.Key, v => new { name = v.Value.Name, date = v.Value.Date });
         }
 
         using var res = await _dispatcher.SendCommandAsync("Runtime.evaluate", new
@@ -131,7 +131,7 @@ public class CdpPage : IAsyncDisposable
     /// <param name="signatureData">Optional dictionary of signature data to inject into the DOM before printing.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>A list of signature zones found in the document.</returns>
-    public async Task<List<SignatureZone>> PrintToPdfAsync(string html, Stream destinationStream, Dictionary<string, (string name, string date)>? signatureData = null,
+    public async Task<List<SignatureZone>> PrintToPdfAsync(string html, Stream destinationStream, Dictionary<string, Signature>? signatureData = null,
         CancellationToken cancellationToken = default)
     {
         await SetContentAsync(html);
@@ -146,7 +146,7 @@ public class CdpPage : IAsyncDisposable
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>A list of signature zones found in the document.</returns>
     /// <exception cref="Exception">Thrown if PDF generation fails.</exception>
-    public async Task<List<SignatureZone>> PrintToPdfAsync(Stream destinationStream, Dictionary<string, (string name, string date)>? signatureData = null, CancellationToken cancellationToken = default)
+    public async Task<List<SignatureZone>> PrintToPdfAsync(Stream destinationStream, Dictionary<string, Signature>? signatureData = null, CancellationToken cancellationToken = default)
     {
         List<SignatureZone> zones = new();
         

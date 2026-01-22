@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using Microsoft.AspNetCore.Mvc;
+using PDFLib.Chromium;
 using PDFLib.Chromium.Hosting;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -26,7 +27,11 @@ app.MapGet("/sign", async (HttpContext request, [FromServices] PdfService servic
     var request1 = new CertificateRequest("cn=Test Signer 1", rsa1, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
     using var cert1 = request1.CreateSelfSigned(DateTimeOffset.Now, DateTimeOffset.Now.AddYears(1));
 
-    await service.RenderSignedPdfAsync(signSample, request.Response.Body, (signer) =>
+    await service.RenderSignedPdfAsync(signSample, request.Response.Body, new Dictionary<string, Signature>
+        {
+            {"signature-area-1", new Signature("Test Signer 1", DateTimeOffset.Now.ToString("yyyy-MM-dd"))}
+        },
+    (signer) =>
     {
         signer.AddCertificate(cert1, "signature-area-1");
     });
