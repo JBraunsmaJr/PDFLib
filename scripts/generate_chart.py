@@ -69,6 +69,9 @@ def generate_chart():
     # Create subplots
     try:
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 12))
+        # Add a timestamp or run ID to the chart to ensure it always changes
+        import datetime
+        fig.suptitle(f'Benchmark Results - Generated at {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
     except Exception as e:
         print(f"Failed to create plots: {e}")
         return
@@ -76,6 +79,8 @@ def generate_chart():
     # Plot Mean Execution Time
     try:
         pivot_mean = df.pivot(index='FileName', columns='Method', values='Mean')
+        # Sort index to ensure consistent order
+        pivot_mean = pivot_mean.sort_index()
         pivot_mean.plot(kind='bar', ax=ax1)
         ax1.set_title('Performance Comparison: Mean Execution Time')
         ax1.set_ylabel('Execution Time (ns/us/ms - check BDN output)')
@@ -91,6 +96,8 @@ def generate_chart():
     if 'Allocated' in df.columns:
         try:
             pivot_alloc = df.pivot(index='FileName', columns='Method', values='Allocated')
+            # Sort index to ensure consistent order
+            pivot_alloc = pivot_alloc.sort_index()
             # Convert to MB for better readability if values are large
             pivot_alloc = pivot_alloc / (1024 * 1024)
             pivot_alloc.plot(kind='bar', ax=ax2)

@@ -62,6 +62,8 @@ jobs:
           docker run --rm -v $(pwd)/BenchmarkDotNet.Artifacts:/src/Benchmarks/BenchmarkDotNet.Artifacts pdflib-benchmarks > benchmark_run.log 2>&1 || (cat benchmark_run.log && exit 1)
           cat benchmark_run.log
           ls -R BenchmarkDotNet.Artifacts
+          # Ensure files are owned by the runner user for the next steps
+          sudo chown -R $USER:$USER BenchmarkDotNet.Artifacts
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -74,7 +76,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # Clean up previous chart to ensure a new one is generated
+          rm -f assets/overview.png
           python scripts/generate_chart.py
+          if [ ! -f assets/overview.png ]; then
+            echo "Error: assets/overview.png was not generated!"
+            exit 1
+          fi
           ls -l assets/overview.png
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
@@ -82,8 +90,23 @@ jobs:
           git add assets/overview.png
           git status
           if git diff --staged --quiet; then
-            echo "No changes to assets/overview.png"
+            echo "No changes to assets/overview.png detected by git"
+            # If no changes were detected, it might be because the chart content is identical.
+            # We already added a timestamp to the chart, so this should be rare.
+            # Log additional info for debugging.
+            ls -l assets/overview.png
+            file assets/overview.png
           else
             git commit -m "Update benchmarks overview chart"
             git push origin main
           fi
+      - name: Upload Benchmark Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          retention-days: 1
+          path: |
+            assets/overview.png
+            BenchmarkDotNet.Artifacts/results/*.csv
+            benchmark_run.log
