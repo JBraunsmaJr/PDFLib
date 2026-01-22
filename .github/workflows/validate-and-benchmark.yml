@@ -58,7 +58,9 @@ jobs:
           mkdir -p BenchmarkDotNet.Artifacts/results
           chmod -R 777 BenchmarkDotNet.Artifacts
           docker build -t pdflib-benchmarks -f Benchmarks/Dockerfile .
-          docker run --rm -v $(pwd)/BenchmarkDotNet.Artifacts:/src/Benchmarks/BenchmarkDotNet.Artifacts pdflib-benchmarks
+          # Run container and capture logs
+          docker run --rm -v $(pwd)/BenchmarkDotNet.Artifacts:/src/Benchmarks/BenchmarkDotNet.Artifacts pdflib-benchmarks > benchmark_run.log 2>&1 || (cat benchmark_run.log && exit 1)
+          cat benchmark_run.log
           ls -R BenchmarkDotNet.Artifacts
       - name: Set up Python
         uses: actions/setup-python@v5

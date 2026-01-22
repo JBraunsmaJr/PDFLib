@@ -1,20 +1,43 @@
 import pandas as pd
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import glob
 import os
 
 def generate_chart():
     # Find the latest CSV result file
-    results_path = 'Benchmarks/BenchmarkDotNet.Artifacts/results/*-report.csv'
-    files = glob.glob(results_path)
+    # Check both common locations
+    search_paths = [
+        'BenchmarkDotNet.Artifacts/results/*-report.csv',
+        'Benchmarks/BenchmarkDotNet.Artifacts/results/*-report.csv'
+    ]
+    
+    files = []
+    for path in search_paths:
+        files.extend(glob.glob(path))
+        
     if not files:
-        print("No benchmark results found.")
+        print(f"No benchmark results found in: {search_paths}")
+        # Try to find any CSV in the current directory or subdirectories for debugging
+        all_csvs = glob.glob('**/*.csv', recursive=True)
+        print(f"Total CSV files found in project: {all_csvs}")
         return
 
     latest_file = max(files, key=os.path.getmtime)
     print(f"Processing {latest_file}")
 
     df = pd.read_csv(latest_file)
+    
+    # Check if we have data
+    if df.empty:
+        print("CSV file is empty.")
+        return
+
+    # Check for NA values in Mean
+    if df['Mean'].isna().all() or (df['Mean'].dtype == object and (df['Mean'] == 'NA').all()):
+        print("Warning: All 'Mean' values are NA. This usually means the benchmark failed or was terminated.")
+        # We'll continue but the chart might be empty or broken
 
     # Filter and process data
     # Assuming columns: Method, Mean, Allocated, FileName
@@ -44,30 +67,42 @@ def generate_chart():
              df['Allocated'] = pd.to_numeric(df['Allocated'], errors='coerce')
     
     # Create subplots
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 12))
+    try:
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 12))
+    except Exception as e:
+        print(f"Failed to create plots: {e}")
+        return
 
     # Plot Mean Execution Time
-    pivot_mean = df.pivot(index='FileName', columns='Method', values='Mean')
-    pivot_mean.plot(kind='bar', ax=ax1)
-    ax1.set_title('Performance Comparison: Mean Execution Time')
-    ax1.set_ylabel('Execution Time (ns/us/ms - check BDN output)')
-    ax1.set_xlabel('Sample File')
-    ax1.tick_params(axis='x', rotation=0)
-    ax1.grid(axis='y', linestyle='--', alpha=0.7)
-    ax1.legend(title='Library')
+    try:
+        pivot_mean = df.pivot(index='FileName', columns='Method', values='Mean')
+        pivot_mean.plot(kind='bar', ax=ax1)
+        ax1.set_title('Performance Comparison: Mean Execution Time')
+        ax1.set_ylabel('Execution Time (ns/us/ms - check BDN output)')
+        ax1.set_xlabel('Sample File')
+        ax1.tick_params(axis='x', rotation=0)
+        ax1.grid(axis='y', linestyle='--', alpha=0.7)
+        ax1.legend(title='Library')
+    except Exception as e:
+        print(f"Error plotting Mean: {e}")
+        ax1.text(0.5, 0.5, f'Error plotting Mean: {e}', ha='center', va='center')
 
     # Plot Allocated Memory
     if 'Allocated' in df.columns:
-        pivot_alloc = df.pivot(index='FileName', columns='Method', values='Allocated')
-        # Convert to MB for better readability if values are large
-        pivot_alloc = pivot_alloc / (1024 * 1024)
-        pivot_alloc.plot(kind='bar', ax=ax2)
-        ax2.set_title('Memory Comparison: Allocated Memory')
-        ax2.set_ylabel('Allocated Memory (MB)')
-        ax2.set_xlabel('Sample File')
-        ax2.tick_params(axis='x', rotation=0)
-        ax2.grid(axis='y', linestyle='--', alpha=0.7)
-        ax2.legend(title='Library')
+        try:
+            pivot_alloc = df.pivot(index='FileName', columns='Method', values='Allocated')
+            # Convert to MB for better readability if values are large
+            pivot_alloc = pivot_alloc / (1024 * 1024)
+            pivot_alloc.plot(kind='bar', ax=ax2)
+            ax2.set_title('Memory Comparison: Allocated Memory')
+            ax2.set_ylabel('Allocated Memory (MB)')
+            ax2.set_xlabel('Sample File')
+            ax2.tick_params(axis='x', rotation=0)
+            ax2.grid(axis='y', linestyle='--', alpha=0.7)
+            ax2.legend(title='Library')
+        except Exception as e:
+            print(f"Error plotting Allocated: {e}")
+            ax2.text(0.5, 0.5, f'Error plotting Allocated: {e}', ha='center', va='center')
     else:
         ax2.text(0.5, 0.5, 'Allocated column not found in results', ha='center', va='center')
 
