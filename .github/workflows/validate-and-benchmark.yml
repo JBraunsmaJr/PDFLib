@@ -71,13 +71,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install pandas matplotlib
       - name: Generate Chart
-        run: |
-          python scripts/generate_chart.py
-          ls -l assets/overview.png
-      - name: Commit and push changes
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          python scripts/generate_chart.py
+          ls -l assets/overview.png
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git
