@@ -28,7 +28,7 @@ async Task RunSignatureSamples()
     await using var page = await browser.CreatePageAsync();
     await page.SetContentAsync(html);
     
-    var signatureData = new Dictionary<string, (string name, string date)>();
+    var signatureData = new Dictionary<string, Signature>();
     signatureData["signature-area-1"] = new("Test Signer 1", DateTime.Now.ToString("yyyy.MM.dd HH:mm:ss"));
     signatureData["signature-area-2"] = new("Test Signer 2", DateTime.Now.ToString("yyyy.MM.dd HH:mm:ss"));
 
