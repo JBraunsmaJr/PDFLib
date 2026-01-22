@@ -43,14 +43,20 @@ public class PdfService : IHostedService
     /// </summary>
     /// <param name="html">The HTML content to render.</param>
     /// <param name="destinationStream">The stream where the signed PDF will be written.</param>
+    /// <param name="signatureInfo">Signature Zone ID mapped to signature details (Name, Date).</param>
     /// <param name="setupSigner">An action to configure the <see cref="PdfSigner"/> with certificates.</param>
     /// <param name="cancellationToken">A cancellation token.</param>
-    public async Task RenderSignedPdfAsync(string html, Stream destinationStream, Action<PdfSigner> setupSigner, CancellationToken cancellationToken = default)
+    public async Task RenderSignedPdfAsync(
+        string html, 
+        Stream destinationStream, 
+        Dictionary<string, (string Name, string Date)> signatureInfo, 
+        Action<PdfSigner> setupSigner, 
+        CancellationToken cancellationToken = default)
     {
         await using var page = await _browser.CreatePageAsync();
         using var ms = new MemoryStream();
         
-        var zones = await page.PrintToPdfAsync(html, ms, null, cancellationToken);
+        var zones = await page.PrintToPdfAsync(html, ms, signatureInfo, cancellationToken);
         
         var signer = new PdfSigner(ms.ToArray(), zones);
         setupSigner(signer);
