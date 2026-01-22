@@ -22,7 +22,7 @@ def generate_chart():
         # Try to find any CSV in the current directory or subdirectories for debugging
         all_csvs = glob.glob('**/*.csv', recursive=True)
         print(f"Total CSV files found in project: {all_csvs}")
-        return
+        exit(1)
 
     latest_file = max(files, key=os.path.getmtime)
     print(f"Processing {latest_file}")
@@ -42,11 +42,24 @@ def generate_chart():
     # Filter and process data
     # Assuming columns: Method, Mean, Allocated, FileName
     # We want to compare Methods (Dink vs PdfLib) for each FileName
+
+    # Debug: Print columns and first few rows
+    print(f"Columns: {df.columns.tolist()}")
+    print("First 5 rows of data:")
+    print(df[['Method', 'FileName', 'Mean']].head())
     
     # Process Mean column
-    if df['Mean'].dtype == object:
-         df['Mean'] = df['Mean'].str.split(' ').str[0].str.replace(',', '')
-    df['Mean'] = pd.to_numeric(df['Mean'], errors='coerce')
+    if 'Mean' in df.columns:
+        if df['Mean'].dtype == object:
+             df['Mean'] = df['Mean'].str.split(' ').str[0].str.replace(',', '')
+        df['Mean'] = pd.to_numeric(df['Mean'], errors='coerce')
+    else:
+        print("Error: 'Mean' column not found in CSV!")
+        # Try to find a column that might be Mean (sometimes BDN adds units to column name or similar)
+        potential_mean = [c for c in df.columns if 'Mean' in c]
+        if potential_mean:
+            print(f"Found potential mean columns: {potential_mean}")
+            df['Mean'] = pd.to_numeric(df[potential_mean[0]], errors='coerce')
 
     # Process Allocated column
     if 'Allocated' in df.columns:
@@ -78,16 +91,22 @@ def generate_chart():
 
     # Plot Mean Execution Time
     try:
-        pivot_mean = df.pivot(index='FileName', columns='Method', values='Mean')
-        # Sort index to ensure consistent order
-        pivot_mean = pivot_mean.sort_index()
-        pivot_mean.plot(kind='bar', ax=ax1)
-        ax1.set_title('Performance Comparison: Mean Execution Time')
-        ax1.set_ylabel('Execution Time (ns/us/ms - check BDN output)')
-        ax1.set_xlabel('Sample File')
-        ax1.tick_params(axis='x', rotation=0)
-        ax1.grid(axis='y', linestyle='--', alpha=0.7)
-        ax1.legend(title='Library')
+        # Filter out NA values for plotting
+        plot_df = df.dropna(subset=['Mean'])
+        if plot_df.empty:
+            print("No valid Mean values to plot.")
+            ax1.text(0.5, 0.5, 'All Mean values are NA/missing', ha='center', va='center')
+        else:
+            pivot_mean = plot_df.pivot(index='FileName', columns='Method', values='Mean')
+            # Sort index to ensure consistent order
+            pivot_mean = pivot_mean.sort_index()
+            pivot_mean.plot(kind='bar', ax=ax1)
+            ax1.set_title('Performance Comparison: Mean Execution Time')
+            ax1.set_ylabel('Execution Time')
+            ax1.set_xlabel('Sample File')
+            ax1.tick_params(axis='x', rotation=0)
+            ax1.grid(axis='y', linestyle='--', alpha=0.7)
+            ax1.legend(title='Library')
     except Exception as e:
         print(f"Error plotting Mean: {e}")
         ax1.text(0.5, 0.5, f'Error plotting Mean: {e}', ha='center', va='center')
@@ -95,18 +114,24 @@ def generate_chart():
     # Plot Allocated Memory
     if 'Allocated' in df.columns:
         try:
-            pivot_alloc = df.pivot(index='FileName', columns='Method', values='Allocated')
-            # Sort index to ensure consistent order
-            pivot_alloc = pivot_alloc.sort_index()
-            # Convert to MB for better readability if values are large
-            pivot_alloc = pivot_alloc / (1024 * 1024)
-            pivot_alloc.plot(kind='bar', ax=ax2)
-            ax2.set_title('Memory Comparison: Allocated Memory')
-            ax2.set_ylabel('Allocated Memory (MB)')
-            ax2.set_xlabel('Sample File')
-            ax2.tick_params(axis='x', rotation=0)
-            ax2.grid(axis='y', linestyle='--', alpha=0.7)
-            ax2.legend(title='Library')
+            # Filter out NA values for plotting
+            plot_alloc_df = df.dropna(subset=['Allocated'])
+            if plot_alloc_df.empty:
+                print("No valid Allocated values to plot.")
+                ax2.text(0.5, 0.5, 'All Allocated values are NA/missing', ha='center', va='center')
+            else:
+                pivot_alloc = plot_alloc_df.pivot(index='FileName', columns='Method', values='Allocated')
+                # Sort index to ensure consistent order
+                pivot_alloc = pivot_alloc.sort_index()
+                # Convert to MB for better readability if values are large
+                pivot_alloc = pivot_alloc / (1024 * 1024)
+                pivot_alloc.plot(kind='bar', ax=ax2)
+                ax2.set_title('Memory Comparison: Allocated Memory')
+                ax2.set_ylabel('Allocated Memory (MB)')
+                ax2.set_xlabel('Sample File')
+                ax2.tick_params(axis='x', rotation=0)
+                ax2.grid(axis='y', linestyle='--', alpha=0.7)
+                ax2.legend(title='Library')
         except Exception as e:
             print(f"Error plotting Allocated: {e}")
             ax2.text(0.5, 0.5, f'Error plotting Allocated: {e}', ha='center', va='center')

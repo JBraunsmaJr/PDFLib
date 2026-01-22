@@ -59,8 +59,7 @@ jobs:
           chmod -R 777 BenchmarkDotNet.Artifacts
           docker build -t pdflib-benchmarks -f Benchmarks/Dockerfile .
           # Run container and capture logs
-          docker run --rm -v $(pwd)/BenchmarkDotNet.Artifacts:/src/Benchmarks/BenchmarkDotNet.Artifacts pdflib-benchmarks > benchmark_run.log 2>&1 || (cat benchmark_run.log && exit 1)
-          cat benchmark_run.log
+          docker run --rm -v $(pwd)/BenchmarkDotNet.Artifacts:/src/Benchmarks/BenchmarkDotNet.Artifacts pdflib-benchmarks
           ls -R BenchmarkDotNet.Artifacts
           # Ensure files are owned by the runner user for the next steps
           sudo chown -R $USER:$USER BenchmarkDotNet.Artifacts
