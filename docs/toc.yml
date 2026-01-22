@@ -7,3 +7,5 @@ items:
     href: wait-strategies.md
   - name: Digital Signatures
     href: digital-signatures.md
+  - name: AspNetCore Example
+    href: aspnetcore-example.md
