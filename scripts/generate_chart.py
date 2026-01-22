@@ -45,14 +45,43 @@ def generate_chart():
 
     # Debug: Print columns and first few rows
     print(f"Columns: {df.columns.tolist()}")
-    print("First 5 rows of data:")
-    print(df[['Method', 'FileName', 'Mean']].head())
+    print("First 5 rows of data before processing:")
+    cols_to_print = [c for c in ['Method', 'FileName', 'Mean', 'Allocated'] if c in df.columns]
+    print(df[cols_to_print].head())
     
     # Process Mean column
     if 'Mean' in df.columns:
         if df['Mean'].dtype == object:
-             df['Mean'] = df['Mean'].str.split(' ').str[0].str.replace(',', '')
-        df['Mean'] = pd.to_numeric(df['Mean'], errors='coerce')
+             def parse_mean(val):
+                 if pd.isna(val) or val == 'NA' or str(val).strip() == '-': return None
+                 val_str = str(val).strip()
+                 parts = val_str.split(' ')
+                 if len(parts) < 2: 
+                     # Try to see if unit is attached to the number
+                     import re
+                     match = re.match(r"([0-9,.]+)\s*([a-zA-Zμ]+)", val_str)
+                     if match:
+                         num_str, unit = match.groups()
+                     else:
+                         return pd.to_numeric(val_str.replace(',', ''), errors='coerce')
+                 else:
+                     num_str = parts[0]
+                     unit = parts[1]
+                 
+                 try:
+                     num = float(num_str.replace(',', ''))
+                 except ValueError:
+                     return None
+
+                 unit = unit.lower()
+                 if unit == 'ns': return num / 1000000.0
+                 if unit == 'us' or unit == 'μs': return num / 1000.0
+                 if unit == 'ms': return num
+                 if unit == 's': return num * 1000.0
+                 return num
+             df['Mean'] = df['Mean'].apply(parse_mean)
+        else:
+             df['Mean'] = pd.to_numeric(df['Mean'], errors='coerce')
     else:
         print("Error: 'Mean' column not found in CSV!")
         # Try to find a column that might be Mean (sometimes BDN adds units to column name or similar)
@@ -66,18 +95,37 @@ def generate_chart():
         if df['Allocated'].dtype == object:
              # Handle units if present (e.g., "1.5 KB", "100 B")
              def parse_alloc(val):
-                 if pd.isna(val): return val
-                 parts = str(val).split(' ')
-                 if len(parts) < 2: return pd.to_numeric(parts[0].replace(',', ''), errors='coerce')
-                 num = float(parts[0].replace(',', ''))
-                 unit = parts[1].upper()
+                 if pd.isna(val) or val == 'NA' or str(val).strip() == '-': return None
+                 val_str = str(val).strip()
+                 parts = val_str.split(' ')
+                 if len(parts) < 2: 
+                     import re
+                     match = re.match(r"([0-9,.]+)\s*([a-zA-Z]+)", val_str)
+                     if match:
+                         num_str, unit = match.groups()
+                     else:
+                         return pd.to_numeric(val_str.replace(',', ''), errors='coerce')
+                 else:
+                     num_str = parts[0]
+                     unit = parts[1]
+                 
+                 try:
+                     num = float(num_str.replace(',', ''))
+                 except ValueError:
+                     return None
+
+                 unit = unit.upper()
+                 if unit == 'B': return num
                  if unit == 'KB': return num * 1024
                  if unit == 'MB': return num * 1024 * 1024
                  if unit == 'GB': return num * 1024 * 1024 * 1024
-                 return num # Bytes
+                 return num # Default to Bytes
              df['Allocated'] = df['Allocated'].apply(parse_alloc)
         else:
              df['Allocated'] = pd.to_numeric(df['Allocated'], errors='coerce')
+
+    print("First 5 rows of data after processing:")
+    print(df[cols_to_print].head())
     
     # Create subplots
     try:
