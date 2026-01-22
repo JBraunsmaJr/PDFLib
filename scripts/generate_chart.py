@@ -43,7 +43,6 @@ def generate_chart():
     # Assuming columns: Method, Mean, Allocated, FileName
     # We want to compare Methods (Dink vs PdfLib) for each FileName
 
-    # Debug: Print columns and first few rows
     print(f"Columns: {df.columns.tolist()}")
     print("First 5 rows of data before processing:")
     cols_to_print = [c for c in ['Method', 'FileName', 'Mean', 'Allocated'] if c in df.columns]
@@ -51,36 +50,35 @@ def generate_chart():
     
     # Process Mean column
     if 'Mean' in df.columns:
-        if df['Mean'].dtype == object:
+        print(f"Mean column type: {df['Mean'].dtype}")
+        if df['Mean'].dtype == object or df['Mean'].dtype == 'string':
              def parse_mean(val):
-                 if pd.isna(val) or val == 'NA' or str(val).strip() == '-': return None
+                 if pd.isna(val) or val == 'NA' or str(val).strip() == '-' or str(val).strip() == '': return None
                  val_str = str(val).strip()
-                 parts = val_str.split(' ')
-                 if len(parts) < 2: 
-                     # Try to see if unit is attached to the number
-                     import re
-                     match = re.match(r"([0-9,.]+)\s*([a-zA-Zμ]+)", val_str)
-                     if match:
-                         num_str, unit = match.groups()
-                     else:
-                         return pd.to_numeric(val_str.replace(',', ''), errors='coerce')
+                 import re
+                 # Handle values with units
+                 match = re.search(r"([0-9,.]+)\s*([a-zA-Zμ]+)", val_str)
+                 if match:
+                     num_str, unit = match.groups()
+                     try:
+                         num = float(num_str.replace(',', ''))
+                     except ValueError:
+                         return None
+                     unit = unit.lower()
+                     if unit == 'ns': return num / 1000000.0
+                     if unit == 'us' or unit == 'μs': return num / 1000.0
+                     if unit == 'ms': return num
+                     if unit == 's': return num * 1000.0
+                     return num
                  else:
-                     num_str = parts[0]
-                     unit = parts[1]
-                 
-                 try:
-                     num = float(num_str.replace(',', ''))
-                 except ValueError:
-                     return None
-
-                 unit = unit.lower()
-                 if unit == 'ns': return num / 1000000.0
-                 if unit == 'us' or unit == 'μs': return num / 1000.0
-                 if unit == 'ms': return num
-                 if unit == 's': return num * 1000.0
-                 return num
+                     # Handle numeric strings without units
+                     try:
+                         return float(val_str.replace(',', ''))
+                     except ValueError:
+                         return None
              df['Mean'] = df['Mean'].apply(parse_mean)
         else:
+             # Already numeric (float or int)
              df['Mean'] = pd.to_numeric(df['Mean'], errors='coerce')
     else:
         print("Error: 'Mean' column not found in CSV!")
@@ -92,34 +90,30 @@ def generate_chart():
 
     # Process Allocated column
     if 'Allocated' in df.columns:
-        if df['Allocated'].dtype == object:
-             # Handle units if present (e.g., "1.5 KB", "100 B")
+        print(f"Allocated column type: {df['Allocated'].dtype}")
+        if df['Allocated'].dtype == object or df['Allocated'].dtype == 'string':
              def parse_alloc(val):
-                 if pd.isna(val) or val == 'NA' or str(val).strip() == '-': return None
+                 if pd.isna(val) or val == 'NA' or str(val).strip() == '-' or str(val).strip() == '': return None
                  val_str = str(val).strip()
-                 parts = val_str.split(' ')
-                 if len(parts) < 2: 
-                     import re
-                     match = re.match(r"([0-9,.]+)\s*([a-zA-Z]+)", val_str)
-                     if match:
-                         num_str, unit = match.groups()
-                     else:
-                         return pd.to_numeric(val_str.replace(',', ''), errors='coerce')
+                 import re
+                 match = re.search(r"([0-9,.]+)\s*([a-zA-Z]+)", val_str)
+                 if match:
+                     num_str, unit = match.groups()
+                     try:
+                         num = float(num_str.replace(',', ''))
+                     except ValueError:
+                         return None
+                     unit = unit.upper()
+                     if unit == 'B': return num
+                     if unit == 'KB': return num * 1024
+                     if unit == 'MB': return num * 1024 * 1024
+                     if unit == 'GB': return num * 1024 * 1024 * 1024
+                     return num
                  else:
-                     num_str = parts[0]
-                     unit = parts[1]
-                 
-                 try:
-                     num = float(num_str.replace(',', ''))
-                 except ValueError:
-                     return None
-
-                 unit = unit.upper()
-                 if unit == 'B': return num
-                 if unit == 'KB': return num * 1024
-                 if unit == 'MB': return num * 1024 * 1024
-                 if unit == 'GB': return num * 1024 * 1024 * 1024
-                 return num # Default to Bytes
+                     try:
+                         return float(val_str.replace(',', ''))
+                     except ValueError:
+                         return None
              df['Allocated'] = df['Allocated'].apply(parse_alloc)
         else:
              df['Allocated'] = pd.to_numeric(df['Allocated'], errors='coerce')
