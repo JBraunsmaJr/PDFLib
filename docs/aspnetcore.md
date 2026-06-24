@@ -25,6 +25,9 @@ The `BlazorRenderer` is not included in the Hosting project. There are perhaps a
 components into HTML, did not want to force such a dependency. Perhaps if the community wants it, it can
 be added.
 
+> The HtmlRenderer does NOT incldude the `@layout` directive. It only renders what's inside the component, nothing more.
+> Therefore your CSS/JS will **not** be included. The [example project](https://github.com/JBraunsmaJr/PDFLib.Example/blob/main/PDFLib.Example/BlazorRenderer.cs) has been updated on a potential workaround.
+
 ```csharp
 public class BlazorRenderer
 {
