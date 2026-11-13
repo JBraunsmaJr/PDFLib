@@ -2,7 +2,7 @@
 
     <PropertyGroup>
         <OutputType>Library</OutputType>
-        <TargetFramework>net10.0</TargetFramework>
+        <TargetFramework>net11.0</TargetFramework>
         <RuntimeIdentifier>linux-x64</RuntimeIdentifier>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
@@ -37,15 +37,15 @@
     </ItemGroup>
 
     <ItemGroup>
-      <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.2" />
+      <PackageReference Include="System.Security.Cryptography.Pkcs" Version="11.0.0" />
       <!-- Transitive dependencies from PDFLib.Razor which is bundled -->
-      <PackageReference Include="Microsoft.AspNetCore.Components" Version="10.0.1" />
-      <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="10.0.1" />
-      <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.1" />
-      <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.1" />
-      <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.1" />
-      <PackageReference Include="SkiaSharp" Version="3.119.1" />
-      <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="3.119.1" />
+      <PackageReference Include="Microsoft.AspNetCore.Components" Version="11.0.0" />
+      <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="11.0.0" />
+      <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="11.0.0" />
+      <PackageReference Include="Microsoft.Extensions.Logging" Version="11.0.0" />
+      <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="11.0.0" />
+      <PackageReference Include="SkiaSharp" Version="4.156.0" />
+      <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="4.156.0" />
     </ItemGroup>
 
     <ItemGroup>
