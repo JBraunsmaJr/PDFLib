@@ -1,4 +1,4 @@
-﻿FROM mcr.microsoft.com/dotnet/runtime:10.0 AS base
+﻿FROM mcr.microsoft.com/dotnet/runtime:11.0 AS base
 
 ARG HEADLESS_CHROMIUM_DOWNLOAD_URL="https://storage.googleapis.com/chrome-for-testing-public/145.0.7572.2/linux64/chrome-headless-shell-linux64.zip"
 
@@ -45,7 +45,7 @@ RUN apt-get update &&  \
 
 WORKDIR /app
 
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:11.0 AS build
 ARG BUILD_CONFIGURATION=Release
 
 WORKDIR /packages
