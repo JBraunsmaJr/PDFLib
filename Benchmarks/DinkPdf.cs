@@ -5,8 +5,12 @@ namespace Benchmarks;
 
 public class DinkPdf : IConverter
 {
-    private static readonly ITools Tools = new PdfTools();
-    private static readonly BasicConverter Converter = new(Tools);
+    /*
+     * wkhtmltopdf must be initialised and used from one and the same thread. SynchronizedConverter owns a
+     * dedicated worker thread and marshals every conversion onto it. With the in-process toolchain each
+     * benchmark case runs on a new thread, and BasicConverter hung on the second case.
+     */
+    private static readonly SynchronizedConverter Converter = new(new PdfTools());
     private HtmlToPdfDocument? _doc;
 
     public DinkPdf()
