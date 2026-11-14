@@ -19,6 +19,8 @@ public class AllowNonOptimized : ManualConfig
         AddColumn(StatisticColumn.StdDev);
         AddColumn(StatisticColumn.Error);
         AddColumn(StatisticColumn.Max);
-        AddJob(Job.Default.WithToolchain(InProcessEmitToolchain.Instance));
+        // The in-process toolchain aborts a benchmark case after 5 minutes by default, which the larger
+        // samples can exceed.
+        AddJob(Job.Default.WithToolchain(new InProcessEmitToolchain(TimeSpan.FromHours(1), logOutput: true)));
     }
 }
