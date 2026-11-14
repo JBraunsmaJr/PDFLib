@@ -180,7 +180,8 @@ public class CdpPage : IAsyncDisposable
             {
                 printBackground = true,
                 transferMode = "ReturnAsStream",
-                preferCSSPageSize = true
+                preferCSSPageSize = true,
+                generateTaggedPDF = _options.GenerateTaggedPdf
             }, _sessionId, cancellationToken);
 
             string? streamHandle = null;

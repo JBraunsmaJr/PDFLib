@@ -95,4 +95,32 @@ public class CdpPageTests
 
         Assert.Equal(pdfA, output.ToArray());
     }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task PrintToPdf_PassesTheTaggingOptionToChromium(bool tagged)
+    {
+        bool? sent = null;
+        await using var server = new FakeCdpServer((_, method, p) =>
+        {
+            if (method == "Page.printToPDF") sent = p.GetProperty("generateTaggedPDF").GetBoolean();
+            return Task.FromResult<string?>(method switch
+            {
+                "Page.getFrameTree" => """{"frameTree":{"frame":{"id":"F1"}}}""",
+                "Page.printToPDF" => """{"stream":"h1"}""",
+                "IO.read" => """{"base64Encoded":true,"data":"","eof":true}""",
+                _ => "{}"
+            });
+        });
+        var page = new CdpPage(server.Dispatcher, "S1", "T1", new SemaphoreSlim(1),
+            new BrowserOptions { GenerateTaggedPdf = tagged });
+
+        await page.PrintToPdfAsync("<html></html>", new MemoryStream()).WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(tagged, sent);
+    }
+
+    [Fact]
+    public void Tagging_IsOnByDefault() => Assert.True(new BrowserOptions().GenerateTaggedPdf);
 }

@@ -42,6 +42,17 @@ public class BrowserOptions
     public int StartupTimeoutMs { get; set; } = 10_000;
 
     /// <summary>
+    /// Gets or sets whether PDFs carry accessibility tags (the structure tree used by screen readers and
+    /// required for PDF/UA). Defaults to true, which is Chromium's own default.
+    /// </summary>
+    /// <remarks>
+    /// Tagging is expensive for long documents: turning it off made a 420-page document about 30% faster
+    /// to produce and roughly 8 times smaller. The pages look identical either way. Leave it on when the
+    /// PDFs must be accessible.
+    /// </remarks>
+    public bool GenerateTaggedPdf { get; set; } = true;
+
+    /// <summary>
     /// Gets or sets extra command line switches passed to Chromium after the built-in ones,
     /// e.g. <c>--font-render-hinting=none</c> or <c>--proxy-server=...</c>.
     /// </summary>

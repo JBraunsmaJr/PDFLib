@@ -17,19 +17,11 @@ public class PdfLib : IConverter
 
     public async Task ConvertAsync(string html)
     {
-        var page = await _browser.CreatePageAsync();
-        try
-        {
-            _fileStream.Position = 0;
-            _fileStream.SetLength(0);
-            await page.SetContentAsync(html);
-            await page.PrintToPdfAsync(_fileStream);
-            await _fileStream.FlushAsync();
-        }
-        finally
-        {
-            await page.DisposeAsync();
-        }
+        _fileStream.Position = 0;
+        _fileStream.SetLength(0);
+        // Pooled page: skips starting a renderer process for every conversion
+        await _browser.RenderPdfAsync(html, _fileStream);
+        await _fileStream.FlushAsync();
     }
 
     public async Task IterationSetupAsync(string html)
@@ -47,7 +39,9 @@ public class PdfLib : IConverter
         await _browser.StartAsync(new BrowserOptions
         {
             // Set memory threshold to 0 to disable memory pressure checks during benchmarks
-            MemoryThresholdMb = 0
+            MemoryThresholdMb = 0,
+            // wkhtmltopdf does not write accessibility tags, so compare like with like
+            GenerateTaggedPdf = false
         });
     }
 
