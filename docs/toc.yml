@@ -9,3 +9,5 @@ items:
     href: digital-signatures.md
   - name: AspNetCore Example
     href: aspnetcore.md
+  - name: Samples and Load Testing
+    href: samples.md

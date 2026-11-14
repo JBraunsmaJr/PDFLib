@@ -8,3 +8,7 @@ out
 api
 test-out
 runtimes
+# Output of samples/run-loadtest.sh
+samples/results/
+loadtest-results.md
+loadtest-results.csv

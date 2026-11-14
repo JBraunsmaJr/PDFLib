@@ -322,6 +322,10 @@ public class ChromiumBrowser : IDisposable
                 using var resetCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
                 await page.ResetAsync(resetCts.Token);
 
+                // After the reset, so the document that was just printed is already unreachable
+                if (_options.CollectGarbageInterval > 0 && page.RentCount % _options.CollectGarbageInterval == 0)
+                    await page.CollectGarbageAsync(resetCts.Token);
+
                 if (Interlocked.Increment(ref _pooledPages) <= _options.PagePoolSize)
                 {
                     _pagePool.Enqueue(page);

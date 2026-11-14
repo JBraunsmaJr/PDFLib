@@ -1,0 +1,372 @@
+/*
+ * Shared print stylesheet for every sample report.
+ *
+ * Page size, margins and the "Page X of Y" footer are declared with @page, which Chromium honours when
+ * printing (the library sets preferCSSPageSize). ReportLayout adds the per-document parts: the footer
+ * text on the left and, for landscape reports, the page orientation. Nothing here needs JavaScript.
+ */
+
+:root {
+    --ink: #1f2933;
+    --muted: #5f6c7b;
+    --line: #d5dde5;
+    --panel: #f4f6f8;
+    --accent: #0b5d8a;
+    --accent-soft: #e3eff6;
+    --good: #1c7c54;
+    --bad: #b3261e;
+}
+
+@page {
+    size: A4;
+    margin: 16mm 14mm 18mm 14mm;
+
+    @bottom-right {
+        content: "Page " counter(page) " of " counter(pages);
+        font: 8pt "Helvetica Neue", Arial, "Liberation Sans", sans-serif;
+        color: #5f6c7b;
+    }
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html {
+    /* Print backgrounds exactly as authored (table stripes, panels, chart fills) */
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+}
+
+body {
+    margin: 0;
+    color: var(--ink);
+    font: 9.5pt/1.45 "Helvetica Neue", Arial, "Liberation Sans", sans-serif;
+    font-variant-numeric: tabular-nums;
+}
+
+h1, h2, h3 {
+    margin: 0;
+    font-weight: 600;
+    break-after: avoid;
+}
+
+h1 { font-size: 20pt; letter-spacing: -0.01em; }
+h2 { font-size: 11.5pt; margin: 7mm 0 2.5mm; color: var(--accent); }
+h3 { font-size: 9.5pt; margin: 4mm 0 1.5mm; }
+
+p { margin: 0 0 2.5mm; }
+
+.muted { color: var(--muted); }
+.small { font-size: 8pt; }
+.right { text-align: right; }
+.center { text-align: center; }
+.nowrap { white-space: nowrap; }
+.good { color: var(--good); }
+.bad { color: var(--bad); }
+
+/* ---------------------------------------------------------------- letterhead */
+
+.letterhead {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding-bottom: 5mm;
+    margin-bottom: 6mm;
+    border-bottom: 0.6mm solid var(--accent);
+}
+
+.brand {
+    display: flex;
+    align-items: center;
+    gap: 3mm;
+}
+
+.brand-mark {
+    width: 11mm;
+    height: 11mm;
+}
+
+.brand-name {
+    font-size: 12.5pt;
+    font-weight: 700;
+    line-height: 1.15;
+}
+
+.letterhead .doc-title {
+    text-align: right;
+}
+
+.letterhead .doc-title .kind {
+    font-size: 17pt;
+    font-weight: 600;
+    color: var(--accent);
+    line-height: 1.1;
+}
+
+/* ---------------------------------------------------------------- panels & key/value blocks */
+
+.columns {
+    display: flex;
+    gap: 6mm;
+}
+
+.columns > * {
+    flex: 1;
+}
+
+.panel {
+    background: var(--panel);
+    border-radius: 1.5mm;
+    padding: 3.5mm 4mm;
+}
+
+.label {
+    font-size: 7.5pt;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    margin-bottom: 1mm;
+}
+
+dl.facts {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.8mm 5mm;
+    margin: 0;
+}
+
+dl.facts dt { color: var(--muted); }
+dl.facts dd { margin: 0; text-align: right; font-weight: 600; }
+
+/* ---------------------------------------------------------------- tables */
+
+table.data {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 2mm;
+}
+
+/* Repeats the column headings at the top of every page the table runs onto */
+table.data thead {
+    display: table-header-group;
+}
+
+table.data th {
+    font-size: 7.5pt;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+    text-align: left;
+    font-weight: 600;
+    padding: 2mm 2.5mm;
+    border-bottom: 0.4mm solid var(--ink);
+    background: #fff;
+}
+
+table.data td {
+    padding: 1.7mm 2.5mm;
+    border-bottom: 0.2mm solid var(--line);
+    vertical-align: top;
+}
+
+table.data tr {
+    break-inside: avoid;
+}
+
+table.data.striped tbody tr:nth-child(even) td {
+    background: #fafbfc;
+}
+
+table.data th.right, table.data td.right { text-align: right; }
+
+/* Denser rows for pages that carry several tables side by side */
+table.data.compact td {
+    padding: 1.1mm 2.2mm;
+    font-size: 8.5pt;
+}
+
+table.data tfoot td {
+    border-bottom: none;
+    font-weight: 600;
+}
+
+table.data tr.group td {
+    background: var(--accent-soft);
+    font-weight: 600;
+    color: var(--accent);
+    border-bottom: none;
+}
+
+/* ---------------------------------------------------------------- totals */
+
+.totals {
+    margin-left: auto;
+    width: 78mm;
+    margin-top: 4mm;
+    break-inside: avoid;
+}
+
+.totals .row {
+    display: flex;
+    justify-content: space-between;
+    padding: 1.2mm 0;
+}
+
+.totals .grand {
+    margin-top: 1.5mm;
+    padding: 2.5mm 3mm;
+    background: var(--accent);
+    color: #fff;
+    border-radius: 1.5mm;
+    font-size: 12pt;
+    font-weight: 700;
+}
+
+/* ---------------------------------------------------------------- KPI tiles & charts */
+
+.kpis {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4mm;
+    margin-bottom: 4mm;
+}
+
+.kpi {
+    border: 0.2mm solid var(--line);
+    border-top: 0.9mm solid var(--accent);
+    border-radius: 1.5mm;
+    padding: 3mm 4mm;
+}
+
+.kpi .value {
+    font-size: 17pt;
+    font-weight: 700;
+    line-height: 1.15;
+}
+
+.kpi .delta {
+    font-size: 8pt;
+    font-weight: 600;
+}
+
+.chart-card {
+    border: 0.2mm solid var(--line);
+    border-radius: 1.5mm;
+    padding: 3.5mm 4mm;
+    break-inside: avoid;
+}
+
+.chart-card h3 {
+    margin-top: 0;
+}
+
+.chart-card svg {
+    display: block;
+    width: 100%;
+    height: auto;
+}
+
+.legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.5mm 5mm;
+    font-size: 8pt;
+    color: var(--muted);
+    margin-top: 2mm;
+}
+
+.legend .swatch {
+    display: inline-block;
+    width: 2.6mm;
+    height: 2.6mm;
+    border-radius: 0.5mm;
+    margin-right: 1.3mm;
+    vertical-align: -0.2mm;
+}
+
+.bar-cell {
+    display: flex;
+    align-items: center;
+    gap: 2mm;
+}
+
+.bar-cell .track {
+    flex: 1;
+    height: 2.2mm;
+    background: var(--panel);
+    border-radius: 1.1mm;
+    overflow: hidden;
+}
+
+.bar-cell .fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 1.1mm;
+}
+
+.page-break {
+    break-before: page;
+}
+
+.keep-together {
+    break-inside: avoid;
+}
+
+/* ---------------------------------------------------------------- agreement */
+
+.agreement p {
+    text-align: justify;
+    hyphens: auto;
+}
+
+.agreement ol.clauses {
+    counter-reset: clause;
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.agreement ol.clauses > li {
+    counter-increment: clause;
+}
+
+.agreement ol.clauses > li > h2::before {
+    content: counter(clause) ". ";
+}
+
+.agreement ol.clauses > li > p {
+    padding-left: 6mm;
+}
+
+.signatures {
+    display: flex;
+    gap: 10mm;
+    margin-top: 8mm;
+    break-inside: avoid;
+}
+
+.signatures .party {
+    flex: 1;
+}
+
+/*
+ * Elements whose id starts with "signature-area-" are picked up by the library as signature zones:
+ * each one becomes a signature field in the PDF, and the signer's name and date are printed inside it.
+ */
+.signature-box {
+    height: 24mm;
+    border: 0.3mm dashed #8b98a5;
+    border-radius: 1.5mm;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #8b98a5;
+    font-size: 8pt;
+    margin: 2mm 0;
+}
+
+/* Chromium repeats <tfoot> on every page by default; a closing total belongs at the end only */
+table.data tfoot {
+    display: table-row-group;
+}

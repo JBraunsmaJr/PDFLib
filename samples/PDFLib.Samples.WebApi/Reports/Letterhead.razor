@@ -1,0 +1,25 @@
+@* Company block on the left, document kind and reference on the right. *@
+<header class="letterhead">
+    <div>
+        <div class="brand">
+            <svg class="brand-mark" viewBox="0 0 44 44" aria-hidden="true">
+                <rect width="44" height="44" rx="8" fill="#0b5d8a" />
+                <path d="M11 32V12h5l12 13V12h5v20h-5L16 19v13z" fill="#fff" />
+            </svg>
+            <div>
+                <div class="brand-name">@Company.Name</div>
+                <div class="muted small">@Company.Street · @Company.City</div>
+            </div>
+        </div>
+    </div>
+    <div class="doc-title">
+        <div class="kind">@Kind</div>
+        <div class="muted">@Reference</div>
+    </div>
+</header>
+
+@code {
+    [Parameter, EditorRequired] public Company Company { get; set; } = default!;
+    [Parameter, EditorRequired] public string Kind { get; set; } = "";
+    [Parameter] public string Reference { get; set; } = "";
+}

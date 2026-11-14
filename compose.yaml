@@ -9,3 +9,18 @@
     build:
       context: .
       dockerfile: ./Benchmarks/Dockerfile
+  pdflib.samples.api:
+    image: pdflib-samples
+    build:
+      context: .
+      dockerfile: ./samples/Dockerfile
+    ports:
+      - "5080:5080"
+  pdflib.samples.loadtest:
+    image: pdflib-samples
+    build:
+      context: .
+      dockerfile: ./samples/Dockerfile
+    entrypoint: [ "samples/run-loadtest.sh", "--", "--out", "/out/loadtest-results" ]
+    volumes:
+      - ./samples/results:/out

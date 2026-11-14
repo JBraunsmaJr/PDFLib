@@ -1,0 +1,106 @@
+@*
+    A text-heavy contract with numbered clauses, a fee schedule and two signature areas.
+
+    The two boxes at the end have ids starting with "signature-area-". The library finds them, creates a
+    PDF signature field at each position, and the API signs the provider's field straight away. The
+    customer's field stays empty until they countersign the stored document later.
+*@
+<ReportLayout Title="@($"Service agreement {Model.Id}")" Footer="@($"Service agreement {Model.Id} · Confidential")">
+    <Letterhead Company="Model.Provider" Kind="Service agreement" Reference="@($"Ref. {Model.Id}")" />
+
+    <div class="agreement">
+        <p>
+            This Service Agreement (the "Agreement") is made effective <strong>@Fmt.Date(Model.Effective)</strong> between
+            <strong>@Model.Provider.Name</strong>, @Model.Provider.Street, @Model.Provider.City (the "Provider") and
+            <strong>@Model.Customer.Name</strong>, @Model.Customer.Street, @Model.Customer.City (the "Customer").
+        </p>
+
+        <div class="columns" style="margin: 5mm 0">
+            <div class="panel">
+                <div class="label">Provider</div>
+                <strong>@Model.Provider.Name</strong><br />
+                @Model.Provider.Street<br />
+                @Model.Provider.City<br />
+                <span class="muted">@Model.Provider.Email</span>
+            </div>
+            <div class="panel">
+                <div class="label">Customer</div>
+                <strong>@Model.Customer.Name</strong><br />
+                @Model.Customer.Street<br />
+                @Model.Customer.City<br />
+                <span class="muted">Attn. @Model.Customer.Contact</span>
+            </div>
+            <div class="panel">
+                <div class="label">Key terms</div>
+                <dl class="facts">
+                    <dt>Effective</dt><dd>@Fmt.Date(Model.Effective)</dd>
+                    <dt>Initial term</dt><dd>@Model.TermMonths months</dd>
+                    <dt>Monthly fees</dt><dd>@Fmt.MoneyWhole(MonthlyTotal)</dd>
+                </dl>
+            </div>
+        </div>
+
+        <ol class="clauses">
+            @foreach (var clause in Model.Sections)
+            {
+                <li>
+                    <h2>@clause.Title</h2>
+                    @foreach (var paragraph in clause.Paragraphs)
+                    {
+                        <p>@paragraph</p>
+                    }
+                </li>
+            }
+        </ol>
+
+        <div class="keep-together">
+            <h2>Schedule of fees</h2>
+            <table class="data">
+                <thead>
+                    <tr>
+                        <th>Service</th>
+                        <th style="width: 28mm">Billing</th>
+                        <th class="right" style="width: 30mm">Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var fee in Model.Fees)
+                    {
+                        <tr>
+                            <td>@fee.Service</td>
+                            <td class="muted">@fee.Billing</td>
+                            <td class="right">@Fmt.MoneyWhole(fee.Amount)</td>
+                        </tr>
+                    }
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <td colspan="2" class="right">Total monthly fees</td>
+                        <td class="right">@Fmt.MoneyWhole(MonthlyTotal)</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+
+        <div class="signatures">
+            <div class="party">
+                <div class="label">Signed for the Provider</div>
+                <div id="signature-area-provider" class="signature-box">Provider signature</div>
+                <strong>@Model.ProviderSignatory</strong><br />
+                <span class="muted">@Model.Provider.Name</span>
+            </div>
+            <div class="party">
+                <div class="label">Signed for the Customer</div>
+                <div id="signature-area-customer" class="signature-box">Awaiting digital signature</div>
+                <strong>@Model.Customer.Contact</strong><br />
+                <span class="muted">@Model.Customer.Name</span>
+            </div>
+        </div>
+    </div>
+</ReportLayout>
+
+@code {
+    [Parameter, EditorRequired] public AgreementModel Model { get; set; } = default!;
+
+    private decimal MonthlyTotal => Model.Fees.Where(f => f.Billing == "Monthly").Sum(f => f.Amount);
+}

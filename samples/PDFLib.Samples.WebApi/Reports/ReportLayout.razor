@@ -1,0 +1,52 @@
+@*
+    The document shell shared by every report: doctype, inlined stylesheet and page setup.
+
+    HtmlRenderer renders a component on its own and ignores @layout, so a report can't rely on the app's
+    layout for its <head>. Wrapping the report body in this component keeps the HTML self-contained,
+    which is what Chromium needs: there is no web server behind the page to fetch a stylesheet from.
+*@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>@Title</title>
+    <style>@((MarkupString)Stylesheet)</style>
+    <style>@((MarkupString)PageRules)</style>
+</head>
+<body>
+    @ChildContent
+</body>
+</html>
+
+@code {
+    private static readonly string Stylesheet = LoadStylesheet();
+
+    /// <summary>Document title; shown by PDF readers in the window title and document properties.</summary>
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+
+    /// <summary>Text printed at the bottom left of every page.</summary>
+    [Parameter] public string Footer { get; set; } = "";
+
+    [Parameter] public bool Landscape { get; set; }
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private string PageRules
+    {
+        get
+        {
+            // A CSS string: escape backslashes and quotes so the text can't break out of it
+            var text = Footer.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("<", "\\3c ");
+            var size = Landscape ? "size: A4 landscape; margin: 12mm 14mm 15mm 14mm;" : "";
+            return $"@page {{ {size} @bottom-left {{ content: \"{text}\"; font: 8pt \"Helvetica Neue\", Arial, \"Liberation Sans\", sans-serif; color: #5f6c7b; }} }}";
+        }
+    }
+
+    private static string LoadStylesheet()
+    {
+        using var stream = typeof(ReportLayout).Assembly.GetManifestResourceStream("report.css")
+                           ?? throw new InvalidOperationException("Embedded stylesheet 'report.css' not found.");
+        using var reader = new StreamReader(stream);
+        return reader.ReadToEnd();
+    }
+}

@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>PDFLib.Samples.WebApi</RootNamespace>
+    <!-- Throughput matters more than footprint for a PDF service; see samples/README.md -->
+    <ServerGarbageCollector>true</ServerGarbageCollector>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\PDFLib.Chromium.Hosting\PDFLib.Chromium.Hosting.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Inlined into every report by ReportLayout, so the HTML sent to Chromium is self-contained -->
+    <EmbeddedResource Include="Reports\report.css" LogicalName="report.css" />
+  </ItemGroup>
+
+</Project>

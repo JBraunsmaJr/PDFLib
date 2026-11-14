@@ -43,6 +43,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PDFLib.Chromium.Hosting.Tes
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PDFLib.Chromium.Tests", "PDFLib.Chromium.Tests\PDFLib.Chromium.Tests.csproj", "{78EBED34-6818-41EA-B307-52E56B1853C1}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PDFLib.Samples.WebApi", "samples\PDFLib.Samples.WebApi\PDFLib.Samples.WebApi.csproj", "{15197547-2412-46B6-A205-15F917D1A1DF}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PDFLib.Samples.LoadTest", "samples\PDFLib.Samples.LoadTest\PDFLib.Samples.LoadTest.csproj", "{F0F0E715-AC12-400D-9C33-992BED032903}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -149,11 +153,37 @@ Global
 		{78EBED34-6818-41EA-B307-52E56B1853C1}.Release|x64.Build.0 = Release|Any CPU
 		{78EBED34-6818-41EA-B307-52E56B1853C1}.Release|x86.ActiveCfg = Release|Any CPU
 		{78EBED34-6818-41EA-B307-52E56B1853C1}.Release|x86.Build.0 = Release|Any CPU
+		{15197547-2412-46B6-A205-15F917D1A1DF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{15197547-2412-46B6-A205-15F917D1A1DF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{15197547-2412-46B6-A205-15F917D1A1DF}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{15197547-2412-46B6-A205-15F917D1A1DF}.Debug|x64.Build.0 = Debug|Any CPU
+		{15197547-2412-46B6-A205-15F917D1A1DF}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{15197547-2412-46B6-A205-15F917D1A1DF}.Debug|x86.Build.0 = Debug|Any CPU
+		{15197547-2412-46B6-A205-15F917D1A1DF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{15197547-2412-46B6-A205-15F917D1A1DF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{15197547-2412-46B6-A205-15F917D1A1DF}.Release|x64.ActiveCfg = Release|Any CPU
+		{15197547-2412-46B6-A205-15F917D1A1DF}.Release|x64.Build.0 = Release|Any CPU
+		{15197547-2412-46B6-A205-15F917D1A1DF}.Release|x86.ActiveCfg = Release|Any CPU
+		{15197547-2412-46B6-A205-15F917D1A1DF}.Release|x86.Build.0 = Release|Any CPU
+		{F0F0E715-AC12-400D-9C33-992BED032903}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F0F0E715-AC12-400D-9C33-992BED032903}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F0F0E715-AC12-400D-9C33-992BED032903}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{F0F0E715-AC12-400D-9C33-992BED032903}.Debug|x64.Build.0 = Debug|Any CPU
+		{F0F0E715-AC12-400D-9C33-992BED032903}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{F0F0E715-AC12-400D-9C33-992BED032903}.Debug|x86.Build.0 = Debug|Any CPU
+		{F0F0E715-AC12-400D-9C33-992BED032903}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F0F0E715-AC12-400D-9C33-992BED032903}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F0F0E715-AC12-400D-9C33-992BED032903}.Release|x64.ActiveCfg = Release|Any CPU
+		{F0F0E715-AC12-400D-9C33-992BED032903}.Release|x64.Build.0 = Release|Any CPU
+		{F0F0E715-AC12-400D-9C33-992BED032903}.Release|x86.ActiveCfg = Release|Any CPU
+		{F0F0E715-AC12-400D-9C33-992BED032903}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{9F52F7B8-FC5C-4E79-BFF1-9E53EE322C4F} = {2D5F40D5-B4C2-4E20-9183-681FDE31DD49}
+		{15197547-2412-46B6-A205-15F917D1A1DF} = {2D5F40D5-B4C2-4E20-9183-681FDE31DD49}
+		{F0F0E715-AC12-400D-9C33-992BED032903} = {2D5F40D5-B4C2-4E20-9183-681FDE31DD49}
 	EndGlobalSection
 EndGlobal

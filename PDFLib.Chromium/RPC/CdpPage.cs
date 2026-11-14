@@ -70,6 +70,15 @@ public class CdpPage : IAsyncDisposable
             throw new InvalidOperationException($"Could not reset page: {error.GetString()}");
     }
 
+    /// <summary>
+    /// Asks the page's renderer to run a full garbage collection, releasing what earlier documents left behind.
+    /// </summary>
+    internal async Task CollectGarbageAsync(CancellationToken cancellationToken = default)
+    {
+        using var res = await _dispatcher.SendCommandAsync("HeapProfiler.collectGarbage", null, _sessionId,
+            cancellationToken);
+    }
+
     private static string? _findSignatureAreasScript;
 
     // JsonSerializerOptions caches type metadata; creating one per call throws that cache away every time

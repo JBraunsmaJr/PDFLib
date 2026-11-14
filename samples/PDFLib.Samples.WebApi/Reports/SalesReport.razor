@@ -1,0 +1,296 @@
+@*
+    A landscape management report: KPI tiles, four charts and two tables.
+
+    The charts are plain inline SVG produced by the template from the data. There is no charting library
+    and no JavaScript, so nothing has to load or run before the page can be printed, and the charts stay
+    sharp vector graphics in the PDF.
+*@
+<ReportLayout Title="@($"Sales performance {Model.Year}")" Landscape="true"
+              Footer="@($"{Model.Company.Name} · Sales performance {Model.Year} · Internal")">
+    <Letterhead Company="Model.Company" Kind="Sales performance" Reference="@($"Fiscal year {Model.Year}")" />
+
+    <div class="kpis">
+        <div class="kpi">
+            <div class="label">Revenue</div>
+            <div class="value">@Fmt.MoneyShort(Model.Revenue)</div>
+            <div class="delta @(Model.Growth >= 0 ? "good" : "bad")">@Fmt.SignedPercent(Model.Growth) vs @(Model.Year - 1)</div>
+        </div>
+        <div class="kpi">
+            <div class="label">Target attainment</div>
+            <div class="value">@Fmt.Percent(Model.Attainment)</div>
+            <div class="delta muted">of @Fmt.MoneyShort(Model.Target) target</div>
+        </div>
+        <div class="kpi">
+            <div class="label">Orders</div>
+            <div class="value">@Fmt.Number(Model.Orders)</div>
+            <div class="delta muted">@Fmt.Number(Model.Orders / 12) per month</div>
+        </div>
+        <div class="kpi">
+            <div class="label">Average order value</div>
+            <div class="value">@Fmt.MoneyWhole(Model.AverageOrder)</div>
+            <div class="delta muted">best month: @BestMonth.Month (@Fmt.MoneyShort(BestMonth.Revenue))</div>
+        </div>
+    </div>
+
+    <div class="columns">
+        <div class="chart-card" style="flex: 1.9">
+            <h3>Monthly revenue against target</h3>
+            <svg viewBox="0 0 640 165" role="img" aria-label="Monthly revenue against target">
+                @foreach (var tick in Enumerable.Range(0, 5))
+                {
+                    var value = MonthlyMax * tick / 4;
+                    var y = BarY(value);
+                    <line x1="46" x2="632" y1="@Fmt.Svg(y)" y2="@Fmt.Svg(y)" stroke="#d5dde5" stroke-width="@(tick == 0 ? "1.2" : "0.6")" />
+                    <SvgText x="40" y="@Fmt.Svg(y + 3)" text-anchor="end" font-size="9" fill="#5f6c7b">@Fmt.MoneyShort(value)</SvgText>
+                }
+                @for (var i = 0; i < Model.Months.Count; i++)
+                {
+                    var month = Model.Months[i];
+                    var x = 46 + i * BarSlot + (BarSlot - BarWidth) / 2;
+                    var hit = month.Revenue >= month.Target;
+                    <rect x="@Fmt.Svg(x)" y="@Fmt.Svg(BarY(month.Revenue))" width="@Fmt.Svg(BarWidth)"
+                          height="@Fmt.Svg(BarY(0) - BarY(month.Revenue))" rx="2" fill="@(hit ? "#0b5d8a" : "#7fb2cc")" />
+                    <line x1="@Fmt.Svg(x - 4)" x2="@Fmt.Svg(x + BarWidth + 4)" y1="@Fmt.Svg(BarY(month.Target))" y2="@Fmt.Svg(BarY(month.Target))"
+                          stroke="#1f2933" stroke-width="1.6" />
+                    <SvgText x="@Fmt.Svg(x + BarWidth / 2)" y="160" text-anchor="middle" font-size="9" fill="#5f6c7b">@month.Month</SvgText>
+                }
+            </svg>
+            <div class="legend">
+                <span><span class="swatch" style="background: #0b5d8a"></span>Target met</span>
+                <span><span class="swatch" style="background: #7fb2cc"></span>Below target</span>
+                <span><span class="swatch" style="background: #1f2933; height: 0.5mm; vertical-align: 0.8mm"></span>Monthly target</span>
+            </div>
+        </div>
+
+        <div class="chart-card">
+            <h3>Revenue by product line</h3>
+            <svg viewBox="0 0 300 172" role="img" aria-label="Revenue by product line">
+                <g transform="translate(86 86) rotate(-90)">
+                    @{ double offset = 0; }
+                    @for (var i = 0; i < Model.Products.Count; i++)
+                    {
+                        var share = (double)(Model.Products[i].Revenue / Model.Revenue);
+                        var length = share * Circumference;
+                        <circle r="58" fill="none" stroke="@Palette[i % Palette.Length]" stroke-width="30"
+                                stroke-dasharray="@Fmt.Svg(Math.Max(length - 1.5, 0)) @Fmt.Svg(Circumference)"
+                                stroke-dashoffset="@Fmt.Svg(-offset)" />
+                        offset += length;
+                    }
+                </g>
+                <SvgText x="86" y="83" text-anchor="middle" font-size="17" font-weight="700" fill="#1f2933">@Fmt.MoneyShort(Model.Revenue)</SvgText>
+                <SvgText x="86" y="97" text-anchor="middle" font-size="8.5" fill="#5f6c7b">total revenue</SvgText>
+                @for (var i = 0; i < Model.Products.Count; i++)
+                {
+                    var product = Model.Products[i];
+                    var y = 28 + i * 22;
+                    <rect x="178" y="@(y - 8)" width="9" height="9" rx="2" fill="@Palette[i % Palette.Length]" />
+                    <SvgText x="192" y="@y" font-size="9" fill="#1f2933">@product.Product</SvgText>
+                    <SvgText x="192" y="@(y + 10)" font-size="8" fill="#5f6c7b">@Fmt.Percent(product.Revenue / Model.Revenue, 0) · @Fmt.MoneyShort(product.Revenue)</SvgText>
+                }
+            </svg>
+        </div>
+    </div>
+
+    <div class="columns" style="margin-top: 4mm">
+        <div class="chart-card">
+            <h3>Cumulative revenue against plan</h3>
+            <svg viewBox="0 0 470 140" role="img" aria-label="Cumulative revenue against plan">
+                @foreach (var tick in Enumerable.Range(0, 5))
+                {
+                    var value = CumulativeMax * tick / 4;
+                    var y = LineY(value);
+                    <line x1="46" x2="462" y1="@Fmt.Svg(y)" y2="@Fmt.Svg(y)" stroke="#d5dde5" stroke-width="@(tick == 0 ? "1.2" : "0.6")" />
+                    <SvgText x="40" y="@Fmt.Svg(y + 3)" text-anchor="end" font-size="9" fill="#5f6c7b">@Fmt.MoneyShort(value)</SvgText>
+                }
+                <polygon points="@AreaPoints" fill="#0b5d8a" opacity="0.12" />
+                <polyline points="@LinePoints(m => m.Target)" fill="none" stroke="#8b98a5" stroke-width="1.6" stroke-dasharray="5 4" />
+                <polyline points="@LinePoints(m => m.Revenue)" fill="none" stroke="#0b5d8a" stroke-width="2.4" stroke-linejoin="round" />
+                @for (var i = 0; i < Model.Months.Count; i++)
+                {
+                    // Child content is rendered after the loop has finished, so it must not capture "i" itself
+                    var label = Model.Months[i].Month;
+                    <SvgText x="@Fmt.Svg(LineX(i))" y="132" text-anchor="middle" font-size="9" fill="#5f6c7b">@label</SvgText>
+                }
+            </svg>
+            <div class="legend">
+                <span><span class="swatch" style="background: #0b5d8a"></span>Actual</span>
+                <span><span class="swatch" style="background: #8b98a5"></span>Plan</span>
+            </div>
+        </div>
+
+        <div class="chart-card">
+            <h3>Revenue by region, year on year</h3>
+            <svg viewBox="0 0 470 140" role="img" aria-label="Revenue by region, year on year">
+                @for (var i = 0; i < Model.Regions.Count; i++)
+                {
+                    var region = Model.Regions[i];
+                    var y = 6 + i * 25;
+                    var change = region.PreviousYear == 0 ? 0 : (region.Revenue - region.PreviousYear) / region.PreviousYear;
+                    <SvgText x="86" y="@(y + 15)" text-anchor="end" font-size="9.5" fill="#1f2933">@region.Region</SvgText>
+                    <rect x="94" y="@y" width="@Fmt.Svg(RegionWidth(region.Revenue))" height="11" rx="2" fill="#0b5d8a" />
+                    <rect x="94" y="@(y + 13)" width="@Fmt.Svg(RegionWidth(region.PreviousYear))" height="7" rx="2" fill="#b9c6d2" />
+                    <SvgText x="@Fmt.Svg(100 + RegionWidth(region.Revenue))" y="@(y + 9.5)" font-size="9" fill="#1f2933">
+                        @Fmt.MoneyShort(region.Revenue)
+                        <tspan fill="@(change >= 0 ? "#1c7c54" : "#b3261e")" font-weight="600"> @Fmt.SignedPercent(change)</tspan>
+                    </SvgText>
+                }
+            </svg>
+            <div class="legend">
+                <span><span class="swatch" style="background: #0b5d8a"></span>@Model.Year</span>
+                <span><span class="swatch" style="background: #b9c6d2"></span>@(Model.Year - 1)</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="page-break"></div>
+
+    <div class="columns">
+        <div style="flex: 1">
+            <h2 style="margin-top: 0">Product lines</h2>
+            <table class="data compact">
+                <thead>
+                    <tr>
+                        <th>Product line</th>
+                        <th class="right">Revenue</th>
+                        <th class="right">Units</th>
+                        <th style="width: 36mm">Gross margin</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var product in Model.Products)
+                    {
+                        <tr>
+                            <td class="nowrap">@product.Product</td>
+                            <td class="right">@Fmt.MoneyWhole(product.Revenue)</td>
+                            <td class="right">@Fmt.Number(product.Units)</td>
+                            <td>
+                                <div class="bar-cell">
+                                    <div class="track"><div class="fill" style="width: @Fmt.Svg((double)product.Margin * 100)%"></div></div>
+                                    <span class="small" style="width: 9mm; text-align: right">@Fmt.Percent(product.Margin, 0)</span>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <td>Total</td>
+                        <td class="right">@Fmt.MoneyWhole(Model.Revenue)</td>
+                        <td class="right">@Fmt.Number(Model.Products.Sum(p => p.Units))</td>
+                        <td></td>
+                    </tr>
+                </tfoot>
+            </table>
+
+            <h2>Monthly detail</h2>
+            <table class="data striped compact">
+                <thead>
+                    <tr>
+                        <th>Month</th>
+                        <th class="right">Revenue</th>
+                        <th class="right">Target</th>
+                        <th class="right">Variance</th>
+                        <th class="right">Orders</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var month in Model.Months)
+                    {
+                        var variance = month.Revenue - month.Target;
+                        <tr>
+                            <td>@month.Month</td>
+                            <td class="right">@Fmt.MoneyWhole(month.Revenue)</td>
+                            <td class="right muted">@Fmt.MoneyWhole(month.Target)</td>
+                            <td class="right @(variance >= 0 ? "good" : "bad")">@Fmt.MoneyWhole(variance)</td>
+                            <td class="right">@Fmt.Number(month.Orders)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div style="flex: 1.25">
+            <h2 style="margin-top: 0">Top accounts</h2>
+            <table class="data striped compact">
+                <thead>
+                    <tr>
+                        <th style="width: 7mm">#</th>
+                        <th>Customer</th>
+                        <th>Region</th>
+                        <th>Owner</th>
+                        <th class="right">Orders</th>
+                        <th class="right">Revenue</th>
+                        <th class="right">YoY</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @for (var i = 0; i < Model.TopAccounts.Count; i++)
+                    {
+                        var account = Model.TopAccounts[i];
+                        <tr>
+                            <td class="muted">@(i + 1)</td>
+                            <td class="nowrap">@account.Customer</td>
+                            <td class="muted nowrap">@account.Region</td>
+                            <td class="muted nowrap">@account.Owner</td>
+                            <td class="right">@account.Orders</td>
+                            <td class="right">@Fmt.MoneyWhole(account.Revenue)</td>
+                            <td class="right @(account.Change >= 0 ? "good" : "bad")">@Fmt.SignedPercent(account.Change)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            <p class="small muted" style="margin-top: 4mm">
+                Revenue is recognised on shipment. Year-on-year figures compare against the same period of @(Model.Year - 1).
+                Figures are unaudited and for internal use only.
+            </p>
+        </div>
+    </div>
+</ReportLayout>
+
+@code {
+    [Parameter, EditorRequired] public SalesModel Model { get; set; } = default!;
+
+    private static readonly string[] Palette = ["#0b5d8a", "#3a8fb7", "#7fb2cc", "#e0a03a", "#5f6c7b", "#b9c6d2"];
+    private const double Circumference = 2 * Math.PI * 58;
+
+    private MonthlySales BestMonth => Model.Months.MaxBy(m => m.Revenue)!;
+
+    // ---- monthly bars: plot area x 46..632, y 10..146
+    private decimal MonthlyMax => NiceMax(Model.Months.Max(m => Math.Max(m.Revenue, m.Target)));
+    private double BarSlot => 586.0 / Model.Months.Count;
+    private double BarWidth => BarSlot * 0.56;
+    private double BarY(decimal value) => 146 - (double)(value / MonthlyMax) * 136;
+
+    // ---- cumulative lines: plot area x 46..462, y 10..116
+    private decimal CumulativeMax => NiceMax(Math.Max(Model.Revenue, Model.Target));
+    private double LineX(int index) => 60 + index * (392.0 / (Model.Months.Count - 1));
+    private double LineY(decimal value) => 116 - (double)(value / CumulativeMax) * 106;
+
+    private string LinePoints(Func<MonthlySales, decimal> selector)
+    {
+        decimal running = 0;
+        return string.Join(' ', Model.Months.Select((m, i) =>
+        {
+            running += selector(m);
+            return $"{Fmt.Svg(LineX(i))},{Fmt.Svg(LineY(running))}";
+        }));
+    }
+
+    private string AreaPoints =>
+        $"{Fmt.Svg(LineX(0))},{Fmt.Svg(LineY(0))} {LinePoints(m => m.Revenue)} {Fmt.Svg(LineX(Model.Months.Count - 1))},{Fmt.Svg(LineY(0))}";
+
+    // ---- region bars: 94..(94 + 270)
+    private double RegionWidth(decimal value) =>
+        (double)(value / Model.Regions.Max(r => Math.Max(r.Revenue, r.PreviousYear))) * 270;
+
+    /// <summary>Rounds an axis maximum up to 1, 2, 2.5, 5 or 10 times a power of ten.</summary>
+    private static decimal NiceMax(decimal value)
+    {
+        if (value <= 0) return 1;
+        var magnitude = (decimal)Math.Pow(10, Math.Floor(Math.Log10((double)value)));
+        foreach (var step in new[] { 1m, 2m, 2.5m, 4m, 5m, 8m, 10m })
+            if (value <= step * magnitude)
+                return step * magnitude;
+        return 10 * magnitude;
+    }
+}

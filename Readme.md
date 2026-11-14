@@ -28,6 +28,19 @@ I've opted to use Chrome's headless Chromium since it's said to be pixel-perfect
 **PDFLib.Chromium** is where Chromium is being explored. The difficulty lies in extracting as much performance out of it as possible. There is an inherited overhead by using a browser (albeit headless)
 as it has to render using Blink engine and runs the V8 engine for JavaScript.
 
+# Samples
+
+[`samples/`](samples/README.md) has a Web API that renders invoices, statements, a sales report with
+charts and a digitally signed agreement, plus a load-test tool that measures requests per minute and
+memory under concurrent load.
+
+Sample documents:
+
+- [Signed Agreement](./assets/agreement-signed.pdf)
+- [Invoice](./assets/invoice.pdf)
+- [Sales](./assets/sales.pdf)
+- [Statement](./assets/statement.pdf)
+
 # Research / Path
 
 ## The Renderer / Headless Chromium

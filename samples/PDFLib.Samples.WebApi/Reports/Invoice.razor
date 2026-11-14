@@ -1,0 +1,81 @@
+@* A one to two page invoice: addresses, line items with discounts, totals and payment details. *@
+<ReportLayout Title="@($"Invoice {Model.Number}")" Footer="@($"{Model.Seller.Name} · Invoice {Model.Number}")">
+    <Letterhead Company="Model.Seller" Kind="Invoice" Reference="@($"No. {Model.Number}")" />
+
+    <div class="columns">
+        <div>
+            <div class="label">Bill to</div>
+            <strong>@Model.BillTo.Name</strong><br />
+            Attn. @Model.BillTo.Contact<br />
+            @Model.BillTo.Street<br />
+            @Model.BillTo.City
+        </div>
+        <div>
+            <div class="label">Ship to</div>
+            <strong>@Model.ShipTo.Name</strong><br />
+            @Model.ShipTo.Street<br />
+            @Model.ShipTo.City
+        </div>
+        <div class="panel">
+            <dl class="facts">
+                <dt>Issued</dt><dd>@Fmt.Date(Model.Issued)</dd>
+                <dt>Due</dt><dd>@Fmt.Date(Model.Due)</dd>
+                <dt>Purchase order</dt><dd>@Model.PurchaseOrder</dd>
+                <dt>Amount due</dt><dd>@Fmt.Money(Model.Total)</dd>
+            </dl>
+        </div>
+    </div>
+
+    <table class="data striped" style="margin-top: 7mm">
+        <thead>
+            <tr>
+                <th style="width: 19mm">Item</th>
+                <th>Description</th>
+                <th class="right" style="width: 20mm">Qty</th>
+                <th class="right" style="width: 24mm">Unit price</th>
+                <th class="right" style="width: 17mm">Disc.</th>
+                <th class="right" style="width: 26mm">Amount</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var line in Model.Lines)
+            {
+                <tr>
+                    <td class="nowrap muted">@line.Sku</td>
+                    <td>@line.Description</td>
+                    <td class="right nowrap">@Fmt.Quantity(line.Quantity) @line.Unit</td>
+                    <td class="right">@Fmt.Money(line.UnitPrice)</td>
+                    <td class="right muted">@(line.DiscountRate > 0 ? Fmt.Percent(line.DiscountRate, 0) : "–")</td>
+                    <td class="right">@Fmt.Money(line.Net)</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+
+    <div class="totals">
+        <div class="row"><span class="muted">Subtotal</span><span>@Fmt.Money(Model.Subtotal)</span></div>
+        <div class="row"><span class="muted">Sales tax (@Fmt.Percent(Model.TaxRate, 0))</span><span>@Fmt.Money(Model.Tax)</span></div>
+        <div class="row"><span class="muted">Shipping and handling</span><span>@Fmt.Money(Model.Shipping)</span></div>
+        <div class="row grand"><span>Total due</span><span>@Fmt.Money(Model.Total)</span></div>
+    </div>
+
+    <div class="columns keep-together" style="margin-top: 8mm">
+        <div class="panel">
+            <div class="label">Payment details</div>
+            <dl class="facts">
+                <dt>Account</dt><dd>@Model.Iban</dd>
+                <dt>Reference</dt><dd>INV-@Model.Number</dd>
+                <dt>Tax ID</dt><dd>@Model.Seller.TaxId</dd>
+            </dl>
+        </div>
+        <div>
+            <div class="label">Terms</div>
+            <p class="small muted">@Model.Notes</p>
+            <p class="small muted">Questions about this invoice? @Model.Seller.Email · @Model.Seller.Phone</p>
+        </div>
+    </div>
+</ReportLayout>
+
+@code {
+    [Parameter, EditorRequired] public InvoiceModel Model { get; set; } = default!;
+}

@@ -1,0 +1,116 @@
+@*
+    A long, table-driven document. The transaction table runs over many pages: column headings repeat
+    on each page (thead), rows never split across a page break, and months are grouped with sub-headings.
+*@
+<ReportLayout Title="@($"Account statement {Model.AccountNumber}")"
+              Footer="@($"{Model.Bank.Name} · Statement for account ending {Model.AccountNumber[^4..]}")">
+    <Letterhead Company="Model.Bank" Kind="Account statement"
+                Reference="@($"{Fmt.Date(Model.From)} – {Fmt.Date(Model.To)}")" />
+
+    <div class="columns">
+        <div>
+            <div class="label">Account holder</div>
+            <strong>@Model.Holder.Name</strong><br />
+            @Model.Holder.Street<br />
+            @Model.Holder.City
+            <div class="label" style="margin-top: 4mm">Account</div>
+            Everyday Checking · @Model.AccountNumber
+        </div>
+        <div class="panel">
+            <div class="label">Summary</div>
+            <dl class="facts">
+                <dt>Opening balance</dt><dd>@Fmt.Money(Model.OpeningBalance)</dd>
+                <dt>Money in</dt><dd class="good">@Fmt.Money(Model.MoneyIn)</dd>
+                <dt>Money out</dt><dd class="bad">@Fmt.Money(Model.MoneyOut)</dd>
+                <dt>Closing balance</dt><dd>@Fmt.Money(Model.ClosingBalance)</dd>
+                <dt>Transactions</dt><dd>@Fmt.Number(Model.Transactions.Count)</dd>
+            </dl>
+        </div>
+    </div>
+
+    <h2>Where the money went</h2>
+    <table class="data">
+        <thead>
+            <tr>
+                <th style="width: 38mm">Category</th>
+                <th>Share of spending</th>
+                <th class="right" style="width: 20mm">Share</th>
+                <th class="right" style="width: 30mm">Amount</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var (category, spent) in Model.SpendingByCategory)
+            {
+                var share = Model.MoneyOut == 0 ? 0 : spent / Model.MoneyOut;
+                <tr>
+                    <td>@category</td>
+                    <td>
+                        <div class="bar-cell">
+                            <div class="track"><div class="fill" style="width: @Fmt.Svg((double)share / (double)MaxShare * 100)%"></div></div>
+                        </div>
+                    </td>
+                    <td class="right muted">@Fmt.Percent(share)</td>
+                    <td class="right">@Fmt.Money(spent)</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+
+    <h2>Transactions</h2>
+    <table class="data">
+        <thead>
+            <tr>
+                <th style="width: 17mm">Date</th>
+                <th style="width: 19mm">Ref.</th>
+                <th>Description</th>
+                <th style="width: 27mm">Category</th>
+                <th class="right" style="width: 27mm">Amount</th>
+                <th class="right" style="width: 28mm">Balance</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var month in Model.Transactions.GroupBy(t => new DateOnly(t.Date.Year, t.Date.Month, 1)))
+            {
+                <tr class="group">
+                    <td colspan="4">@Fmt.MonthYear(month.Key)</td>
+                    <td class="right" colspan="2">net @Fmt.Signed(month.Sum(t => t.Amount))</td>
+                </tr>
+                @foreach (var t in month)
+                {
+                    <tr>
+                        <td class="nowrap">@Fmt.ShortDate(t.Date)</td>
+                        <td class="muted">@t.Reference</td>
+                        <td>@t.Description</td>
+                        <td class="muted">@t.Category</td>
+                        <td class="right @(t.Amount > 0 ? "good" : null)">@Fmt.Signed(t.Amount)</td>
+                        <td class="right">@Fmt.Money(t.Balance)</td>
+                    </tr>
+                }
+            }
+        </tbody>
+        <tfoot>
+            <tr>
+                <td colspan="5" class="right">Closing balance on @Fmt.Date(Model.To)</td>
+                <td class="right">@Fmt.Money(Model.ClosingBalance)</td>
+            </tr>
+        </tfoot>
+    </table>
+
+    <p class="small muted" style="margin-top: 6mm">
+        Please review this statement and report any discrepancy within 60 days.
+        @Model.Bank.Name · @Model.Bank.Phone · @Model.Bank.Email
+    </p>
+</ReportLayout>
+
+@code {
+    [Parameter, EditorRequired] public StatementModel Model { get; set; } = default!;
+
+    private decimal MaxShare
+    {
+        get
+        {
+            var top = Model.SpendingByCategory.FirstOrDefault().Spent;
+            return Model.MoneyOut == 0 || top == 0 ? 1 : top / Model.MoneyOut;
+        }
+    }
+}

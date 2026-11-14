@@ -119,6 +119,43 @@ public class ChromiumBrowserLaunchTests : IDisposable
         Assert.Contains("StartAsync", ex.Message);
     }
 
+    /// <summary>A fake browser that can open pages and writes every command it receives to a file.</summary>
+    private string PageCapableScript(string logFile) => WriteScript("""
+        while IFS= read -r -d '' msg <&3; do
+          id=$(printf '%s' "$msg" | sed -n 's/.*"id":\([0-9]*\).*/\1/p')
+          printf '%s\n' "$msg" | sed -n 's/.*"method":"\([A-Za-z.]*\)".*/\1/p' >> 'LOGFILE'
+          printf '{"id":%s,"result":{"targetId":"T1","sessionId":"S1"}}\0' "$id" >&4
+        done
+        """.Replace("LOGFILE", logFile));
+
+    [Theory]
+    [InlineData(0, 0)] // off by default
+    [InlineData(1, 4)] // after every render
+    [InlineData(2, 2)] // after every second render
+    public async Task ReturnPage_CollectsGarbage_AtTheConfiguredInterval(int interval, int expected)
+    {
+        var log = Path.Combine(_dir, "methods");
+        using var browser = new ChromiumBrowser();
+        await browser.StartAsync(new BrowserOptions
+        {
+            BinaryPath = PageCapableScript(log),
+            PagePoolSize = 1,
+            CollectGarbageInterval = interval
+        }).WaitAsync(TimeSpan.FromSeconds(10));
+
+        for (var i = 0; i < 4; i++)
+        {
+            var page = await browser.RentPageAsync().WaitAsync(TimeSpan.FromSeconds(10));
+            await browser.ReturnPageAsync(page).AsTask().WaitAsync(TimeSpan.FromSeconds(10));
+        }
+
+        var methods = await File.ReadAllLinesAsync(log);
+        Assert.Equal(expected, methods.Count(m => m == "HeapProfiler.collectGarbage"));
+        // One page served all four rents, and each return reset it before any collection
+        Assert.Equal(1, methods.Count(m => m == "Target.createTarget"));
+        Assert.Equal(4, methods.Count(m => m == "Page.navigate"));
+    }
+
         private static bool IsZombie(int pid)
     {
         try { return File.ReadAllText($"/proc/{pid}/stat").Contains(") Z "); }
