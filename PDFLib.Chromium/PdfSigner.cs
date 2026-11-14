@@ -7,535 +7,544 @@ using PDFLib.Models;
 namespace PDFLib.Chromium;
 
 /// <summary>
-/// Provides functionality to sign PDF documents by injecting digital signature fields and metadata.
-/// Supports incremental updates and multiple certificates.
+/// Describes a signature field found in a PDF.
+/// </summary>
+/// <param name="Name">The field name. For PDFs made by this library it is the id of the signature zone.</param>
+/// <param name="IsSigned">Whether the field already carries a signature.</param>
+public sealed record PdfSignatureField(string Name, bool IsSigned);
+
+/// <summary>
+/// Signs PDF documents. Creates signature fields for the zones found at render time and applies
+/// certificate signatures, now or later, to any number of fields.
 /// </summary>
 /// <remarks>
-/// PDF Syntax is tricky so comments are left all over the place to try
-/// and keep things straight
+/// <para>
+/// Every signature is written as its own incremental update appended to the file. A signature covers the
+/// whole file as it exists when it is made, so appending is the only way a later signature can be added
+/// without invalidating the earlier ones.
+/// </para>
+/// <para>
+/// Signing later works on the output of an earlier call: load the bytes, add a certificate for an
+/// unsigned field and call <see cref="SignAsync"/> again. No zones are needed for that.
+/// </para>
 /// </remarks>
 public class PdfSigner
 {
     private readonly byte[] _pdfBytes;
     private readonly List<SignatureZone> _zones;
-    private readonly List<PdfObject> _newObjects = new();
-    private readonly Dictionary<int, long> _offsets = new();
     private readonly Dictionary<string, X509Certificate2> _certificates = new();
+    private readonly List<string> _certificateOrder = new();
     private X509Certificate2? _defaultCertificate;
-    private int _nextId;
+    private int _reservedSignatureSize = 4096;
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="PdfSigner"/> class for a PDF whose signature fields
+    /// already exist, e.g. to add a signature to a document that was rendered (and possibly signed) earlier.
+    /// </summary>
+    /// <param name="pdfBytes">The raw bytes of the PDF to sign.</param>
+    public PdfSigner(byte[] pdfBytes) : this(pdfBytes, new List<SignatureZone>())
+    {
+    }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="PdfSigner"/> class.
     /// </summary>
     /// <param name="pdfBytes">The raw bytes of the PDF to sign.</param>
-    /// <param name="zones">The list of signature zones detected in the document.</param>
+    /// <param name="zones">
+    /// The signature zones detected in the document. A signature field is created for every zone that
+    /// doesn't have one yet, whether or not a certificate is supplied for it now.
+    /// </param>
     public PdfSigner(byte[] pdfBytes, List<SignatureZone> zones)
     {
-        _pdfBytes = pdfBytes;
-        _zones = zones;
+        _pdfBytes = pdfBytes ?? throw new ArgumentNullException(nameof(pdfBytes));
+        _zones = zones ?? throw new ArgumentNullException(nameof(zones));
     }
 
     /// <summary>
-    /// Adds a certificate to be used for signing.
+    /// Gets or sets how many characters are reserved in the file for each signature. A signature needs two
+    /// characters per byte, so the default of 4096 holds about 2 KB. Raise it for long certificate chains.
     /// </summary>
-    /// <param name="certificate">The X.509 certificate to use.</param>
-    /// <param name="zoneId">The ID of the signature zone to associate this certificate with. If null, it acts as a default.</param>
+    public int ReservedSignatureSize
+    {
+        get => _reservedSignatureSize;
+        set
+        {
+            if (value < 1024 || value % 2 != 0)
+                throw new ArgumentOutOfRangeException(nameof(value), "Must be an even number of at least 1024.");
+            _reservedSignatureSize = value;
+        }
+    }
+
+    /// <summary>
+    /// Adds a certificate to be used for signing. Signatures are applied in the order certificates are added.
+    /// </summary>
+    /// <param name="certificate">The X.509 certificate to use. It must have a private key.</param>
+    /// <param name="zoneId">
+    /// The signature zone (field name) to sign with this certificate. If null, the certificate is the default:
+    /// it signs every zone passed to the constructor that has no certificate of its own or, when no zones were
+    /// passed, every unsigned signature field in the document.
+    /// </param>
     public void AddCertificate(X509Certificate2 certificate, string? zoneId = null)
     {
+        ArgumentNullException.ThrowIfNull(certificate);
+
         if (string.IsNullOrEmpty(zoneId))
         {
             _defaultCertificate = certificate;
+            return;
         }
-        else
-        {
-            _certificates[zoneId] = certificate;
-        }
+
+        if (!_certificates.ContainsKey(zoneId)) _certificateOrder.Add(zoneId);
+        _certificates[zoneId] = certificate;
+    }
+
+    /// <summary>
+    /// Lists the signature fields that already exist in the PDF and whether each one is signed.
+    /// Useful before signing later, to see what is left to sign.
+    /// </summary>
+    public IReadOnlyList<PdfSignatureField> GetSignatureFields()
+    {
+        var reader = PdfFileReader.Parse(_pdfBytes);
+        return ReadFields(reader).Select(f => new PdfSignatureField(f.Name, f.IsSigned)).ToList();
     }
 
     /// <summary>
     /// Performs the signing operation asynchronously.
     /// </summary>
     /// <returns>A task that represents the asynchronous signing operation. The task result contains the signed PDF bytes.</returns>
-    /// <exception cref="InvalidOperationException">Thrown if no certificates are provided.</exception>
-    /// <exception cref="Exception">Thrown if the PDF structure is invalid or signing fails.</exception>
-    public async Task<byte[]> SignAsync()
+    /// <exception cref="InvalidOperationException">
+    /// Thrown if a certificate targets a field that doesn't exist or is already signed, or a signature
+    /// doesn't fit in <see cref="ReservedSignatureSize"/>.
+    /// </exception>
+    /// <exception cref="InvalidDataException">Thrown if the PDF structure is invalid.</exception>
+    /// <exception cref="NotSupportedException">Thrown if the PDF uses cross-reference streams.</exception>
+    public Task<byte[]> SignAsync()
     {
-        var lastStartXref = FindLastStartXref();
-        if (lastStartXref == -1) throw new Exception("Could not find startxref");
-
-        var trailer = ParseTrailer(lastStartXref);
-        var rootRef = (PdfReference)trailer.Get("/Root");
-        _nextId = FindMaxId() + 1;
-
-        using var ms = new MemoryStream();
-        await ms.WriteAsync(_pdfBytes);
-
-        var acroForm = new PdfDictionary
-        {
-            ObjectId = _nextId++
-        };
-        acroForm.Add("/Fields", new PdfArray());
-        _newObjects.Add(acroForm);
-
-        // Map sigDict ObjectId to zone ID for later signing
-        var sigDictToZoneId = new Dictionary<int, string>();
-
-        // Add signature fields for each zone
-        var sigFields = (PdfArray)acroForm.Get("/Fields");
-        
-        var firstPageRef = FindPageRef(rootRef, 1);
-
-        foreach (var zone in _zones)
-        {
-            var (x, y, w, h, pageNum) = zone.ToPdfCoordinates();
-            
-            // Check if we have a certificate for this zone
-            var hasCert = _certificates.ContainsKey(zone.Id) || _defaultCertificate != null;
-
-            PdfReference? sigDictRef = null;
-            if (hasCert)
-            {
-                var sigDict = new PdfSignature(4096)
-                {
-                    ObjectId = _nextId++
-                };
-                _newObjects.Add(sigDict);
-                sigDictToZoneId[sigDict.ObjectId.Value] = zone.Id;
-                sigDictRef = new PdfReference(sigDict.ObjectId.Value);
-            }
-
-            var sigField = new PdfDictionary();
-            sigField.ObjectId = _nextId++;
-            sigField.Add("/Type", new PdfName("/Annot"));
-            sigField.Add("/Subtype", new PdfName("/Widget"));
-            sigField.Add("/FT", new PdfName("/Sig"));
-            sigField.Add("/Rect", new PdfArray(new PdfNumber(x), new PdfNumber(y), new PdfNumber(x + w), new PdfNumber(y + h)));
-            
-            var targetPageRef = FindPageRef(rootRef, pageNum) ?? firstPageRef;
-            if (targetPageRef != null) sigField.Add("/P", targetPageRef);
-            
-            if (sigDictRef != null)
-            {
-                sigField.Add("/V", sigDictRef);
-            }
-
-            sigField.Add("/T", new PdfString(zone.Id));
-            sigField.Add("/F", new PdfNumber(4)); // Print flag
-
-            if (hasCert)
-            {
-                // Create appearance stream for visualization
-                var cert = _certificates.TryGetValue(zone.Id, out var c) ? c : _defaultCertificate;
-                if (cert != null)
-                {
-                    var appearance = CreateAppearance(w, h);
-                    appearance.ObjectId = _nextId++;
-                    _newObjects.Add(appearance);
-                    
-                    var apDict = new PdfDictionary();
-                    apDict.Add("/N", new PdfReference(appearance.ObjectId.Value));
-                    sigField.Add("/AP", apDict);
-                }
-            }
-            
-            _newObjects.Add(sigField);
-            sigFields.Add(new PdfReference(sigField.ObjectId.Value));
-        }
-
-        // In an incremental update, we should provide the updated Root object
-        var updatedRoot = new PdfDictionary();
-        updatedRoot.ObjectId = rootRef.Id;
-        
-        // Try to preserve all keys from original root
-        var rootText = GetObjectText(rootRef.Id);
-        
-        // Match all keys in the dictionary: /Key value
-        var keyMatches = System.Text.RegularExpressions.Regex.Matches(rootText, @"(/[^/ \(\)\[\]<>]+)\s+([^\n\r/<>\[\]]+|\[(?:[^\[\]]*|\[[^\[\]]*\])*\]|<<(?:[^<>]*|<<[^<>]*>>)*>>)");
-        foreach (System.Text.RegularExpressions.Match match in keyMatches)
-        {
-            var key = match.Groups[1].Value;
-            var val = match.Groups[2].Value.Trim();
-            if (key == "/AcroForm") continue; // We'll add our own
-            
-            // If it's a simple reference, use PdfReference
-            var refMatch = System.Text.RegularExpressions.Regex.Match(val, @"^(\d+)\s+\d+\s+R$");
-            if (refMatch.Success)
-            {
-                updatedRoot.Add(key, new PdfReference(int.Parse(refMatch.Groups[1].Value)));
-            }
-            else
-            {
-                // For complex values, ensure they don't break the dictionary syntax
-                updatedRoot.Add(key, new PdfRawObject(val));
-            }
-        }
-        
-        updatedRoot.Add("/AcroForm", new PdfReference(acroForm.ObjectId.Value));
-        _newObjects.Add(updatedRoot);
-        
-        // Update Pages to include the new Annotations
-        // Group signature zones by page number
-        var zonesByPage = _zones.GroupBy(z => z.ToPdfCoordinates().pageNumber);
-        
-        foreach (var pageGroup in zonesByPage)
-        {
-            var pageNum = pageGroup.Key;
-            var pageRefForThisPage = FindPageRef(rootRef, pageNum);
-
-            if (pageRefForThisPage == null) continue;
-            
-            var updatedPage = new PdfDictionary();
-            updatedPage.ObjectId = pageRefForThisPage.Id;
-
-            var annots = new PdfArray();
-                
-            // Try to find existing annotations for this page to preserve them
-            var pageText = GetObjectText(pageRefForThisPage.Id);
-                
-            // Preserve all keys from original page object
-            var pageKeys = System.Text.RegularExpressions.Regex.Matches(pageText, @"(/[^/ \(\)\[\]<>]+)\s+([^\n\r/<>\[\]]+|\[(?:[^\[\]]*|\[[^\[\]]*\])*\]|<<(?:[^<>]*|<<[^<>]*>>)*>>)");
-            foreach (System.Text.RegularExpressions.Match match in pageKeys)
-            {
-                var key = match.Groups[1].Value;
-                var val = match.Groups[2].Value.Trim();
-                if (key == "/Annots")
-                {
-                    // We'll handle /Annots separately
-                    var refMatches = System.Text.RegularExpressions.Regex.Matches(val, @"(\d+)\s+\d+\s+R");
-                    foreach (System.Text.RegularExpressions.Match m in refMatches)
-                    {
-                        annots.Add(new PdfReference(int.Parse(m.Groups[1].Value)));
-                    }
-                    continue;
-                }
-                    
-                // If it's a simple reference, use PdfReference
-                var refMatch = System.Text.RegularExpressions.Regex.Match(val, @"^(\d+)\s+\d+\s+R$");
-                if (refMatch.Success)
-                {
-                    updatedPage.Add(key, new PdfReference(int.Parse(refMatch.Groups[1].Value)));
-                }
-                else
-                {
-                    updatedPage.Add(key, new PdfRawObject(val));
-                }
-            }
-
-            // Add our new signature widgets for this specific page
-            foreach (var zone in pageGroup)
-            {
-                // Find the signature field associated with this zone ID
-                var sigField = _newObjects.OfType<PdfDictionary>()
-                    .FirstOrDefault(o => o.GetOptional("/Subtype") is PdfName { Name: "/Widget" } && 
-                                         o.GetOptional("/T") is PdfString s && s.GetBytes().Length > 0 && Encoding.ASCII.GetString(s.GetBytes()).Contains(zone.Id));
-                    
-                if (sigField != null)
-                {
-                    annots.Add(new PdfReference(sigField.ObjectId!.Value));
-                }
-            }
-                
-            updatedPage.Add("/Annots", annots);
-            _newObjects.Add(updatedPage);
-        }
-
-        // Write new objects
-        var writer = new BinaryWriter(ms);
-        ms.Seek(0, SeekOrigin.End);
-        
-        foreach (var obj in _newObjects)
-        {
-            _offsets[obj.ObjectId!.Value] = ms.Position;
-            writer.Write(Encoding.ASCII.GetBytes($"\n{obj.ObjectId} {obj.Generation} obj\n"));
-            obj.WriteTo(writer);
-            writer.Write(Encoding.ASCII.GetBytes("\nendobj\n"));
-        }
-
-        var xrefOffset = ms.Position;
-        // The startxref must point to the 'x' in 'xref'. Must adjust offset since we added newline
-        writer.Write(Encoding.ASCII.GetBytes("\nxref\n"));
-        xrefOffset++;
-        
-        var sortedIds = _offsets.Keys.OrderBy(k => k).ToList();
-        // Standard xref: startId count
-        if (sortedIds.Count > 0)
-        {
-            var currentRangeStart = sortedIds[0];
-            var currentRangeCount = 1;
-            
-            var ranges = new List<(int start, int count)>();
-            for (var i = 1; i < sortedIds.Count; i++)
-            {
-                if (sortedIds[i] == currentRangeStart + currentRangeCount)
-                {
-                    currentRangeCount++;
-                }
-                else
-                {
-                    ranges.Add((currentRangeStart, currentRangeCount));
-                    currentRangeStart = sortedIds[i];
-                    currentRangeCount = 1;
-                }
-            }
-            ranges.Add((currentRangeStart, currentRangeCount));
-
-            foreach (var range in ranges)
-            {
-                writer.Write(Encoding.ASCII.GetBytes($"{range.start} {range.count}\n"));
-                for (var i = 0; i < range.count; i++)
-                {
-                    var id = range.start + i;
-                    writer.Write(Encoding.ASCII.GetBytes($"{_offsets[id]:D10} 00000 n \n"));
-                }
-            }
-        }
-        else
-        {
-             // Fallback if somehow no new objects
-             writer.Write(Encoding.ASCII.GetBytes("0 1\n0000000000 65535 f \n"));
-        }
-
-        writer.Write("trailer\n"u8.ToArray());
-        var newTrailer = new PdfDictionary();
-        newTrailer.Add("/Size", new PdfNumber(_nextId));
-        newTrailer.Add("/Root", rootRef);
-        newTrailer.Add("/Prev", new PdfNumber(lastStartXref));
-        
-        writer.Write(newTrailer.GetBytes());
-        writer.Write(Encoding.ASCII.GetBytes($"\nstartxref\n{xrefOffset}\n%%EOF"));
-        writer.Flush();
-
-        var signedBytes = ms.ToArray();
-        
-         // The final step is to actually sign the PDF with the certificate
-        foreach (var obj in _newObjects.OfType<PdfSignature>())
-        {
-            var zoneId = sigDictToZoneId[obj.ObjectId!.Value];
-            if (_certificates.TryGetValue(zoneId, out var cert))
-            {
-                SignDocument(signedBytes, obj, cert);
-            }
-            else if (_defaultCertificate != null)
-            {
-                SignDocument(signedBytes, obj, _defaultCertificate);
-            }
-        }
-
-        return signedBytes;
+        return Task.FromResult(Sign());
     }
 
-    private void SignDocument(byte[] pdfBytes, PdfSignature signature, X509Certificate2 certificate)
+    private byte[] Sign()
     {
-        var contentsStart = _offsets[signature.ObjectId!.Value] + GetContentsRelativeOffset(signature);
-        const int contentsLength = 4096;
+        var output = new MemoryStream(_pdfBytes.Length + 64 * 1024);
+        output.Write(_pdfBytes);
 
-        var part1Length = (int)contentsStart;
-        var part2Start = (int)(contentsStart + contentsLength);
-        var part2Length = pdfBytes.Length - part2Start;
+        var reader = Read(output);
+        var existing = ReadFields(reader);
 
-        var byteRange = $"[0 {part1Length} {part2Start} {part2Length}]";
-        var byteRangeOffset = _offsets[signature.ObjectId!.Value] + GetByteRangeRelativeOffset(signature);
+        var missingZones = _zones
+            .Where(z => existing.All(f => f.Name != z.Id))
+            .DistinctBy(z => z.Id)
+            .ToList();
 
-        var byteRangeBytes = Encoding.ASCII.GetBytes(byteRange.PadRight(64));
-        Array.Copy(byteRangeBytes, 0, pdfBytes, byteRangeOffset, byteRangeBytes.Length);
+        var targets = ResolveTargets(existing, missingZones);
 
-        byte[] hash;
-        using (var sha = SHA256.Create())
+        /*
+         * First update: create every missing field (all zones, signed now or not), so later signers only
+         * ever have to append a signature. If the first signature is for one of the new fields it goes into
+         * the same update, which saves a revision in the common single-signature case.
+         */
+        if (missingZones.Count > 0)
         {
-            sha.TransformBlock(pdfBytes, 0, part1Length, null, 0);
-            sha.TransformFinalBlock(pdfBytes, part2Start, part2Length);
-            hash = sha.Hash!;
+            (string Name, X509Certificate2 Certificate)? folded = null;
+            if (targets.Count > 0 && missingZones.Any(z => z.Id == targets[0].Name))
+            {
+                folded = targets[0];
+                targets.RemoveAt(0);
+            }
+
+            var signature = WriteFieldsUpdate(output, reader, missingZones, folded?.Name);
+            if (signature != null) ApplySignature(output, signature, folded!.Value.Certificate);
         }
 
-        var contentInfo = new ContentInfo(hash);
-        var signedCms = new SignedCms(contentInfo, true);
+        // Every further signature: its own update holding the signature and the field now pointing at it
+        foreach (var (name, certificate) in targets)
+        {
+            reader = Read(output);
+            var field = ReadFields(reader).First(f => f.Name == name);
+
+            var signature = WriteSignatureUpdate(output, reader, field);
+            ApplySignature(output, signature, certificate);
+        }
+
+        return output.ToArray();
+    }
+
+    private static PdfFileReader Read(MemoryStream output)
+    {
+        return PdfFileReader.Parse(output.GetBuffer().AsMemory(0, (int)output.Length));
+    }
+
+    private List<(string Name, X509Certificate2 Certificate)> ResolveTargets(List<FieldInfo> existing,
+        List<SignatureZone> missingZones)
+    {
+        var targets = new List<(string Name, X509Certificate2 Certificate)>();
+
+        foreach (var name in _certificateOrder)
+        {
+            var field = existing.FirstOrDefault(f => f.Name == name);
+            if (field == null && missingZones.All(z => z.Id != name))
+            {
+                var known = existing.Select(f => f.Name).Concat(missingZones.Select(z => z.Id)).ToList();
+                throw new InvalidOperationException(
+                    $"There is no signature field or zone named '{name}'. " +
+                    (known.Count > 0 ? $"Available: {string.Join(", ", known)}." : "The document has no signature fields."));
+            }
+
+            if (field is { IsSigned: true })
+                throw new InvalidOperationException($"Signature field '{name}' is already signed.");
+
+            targets.Add((name, _certificates[name]));
+        }
+
+        if (_defaultCertificate != null)
+        {
+            var candidates = _zones.Count > 0
+                ? _zones.Select(z => z.Id).Distinct()
+                : existing.Select(f => f.Name);
+
+            foreach (var name in candidates)
+            {
+                if (_certificates.ContainsKey(name)) continue;
+                if (existing.Any(f => f.Name == name && f.IsSigned)) continue;
+                targets.Add((name, _defaultCertificate));
+            }
+        }
+
+        return targets;
+    }
+
+    // ------------------------------------------------------------------ updates
+
+    /// <summary>
+    /// Appends the update that adds signature fields (and their widgets) for <paramref name="zones"/>.
+    /// </summary>
+    /// <returns>The signature dictionary to fill in when <paramref name="signNow"/> names one of the zones.</returns>
+    private PdfSignature? WriteFieldsUpdate(MemoryStream output, PdfFileReader reader, List<SignatureZone> zones,
+        string? signNow)
+    {
+        var objects = new List<PdfObject>();
+        var nextId = reader.Size;
+        PdfSignature? signature = null;
+
+        var newFieldRefs = new List<PdfObject>();
+        var widgetsByPage = new Dictionary<int, List<PdfObject>>();
+        var firstPage = reader.FindPage(1);
+
+        foreach (var zone in zones)
+        {
+            var (x, y, w, h, pageNumber) = zone.ToPdfCoordinates();
+            var pageId = reader.FindPage(pageNumber) ?? firstPage;
+
+            var field = new PdfDictionary { ObjectId = nextId++ };
+            field.Add("/Type", new PdfName("/Annot"));
+            field.Add("/Subtype", new PdfName("/Widget"));
+            field.Add("/FT", new PdfName("/Sig"));
+            field.Add("/Rect", new PdfArray(new PdfNumber(x), new PdfNumber(y), new PdfNumber(x + w), new PdfNumber(y + h)));
+            if (pageId != null) field.Add("/P", new PdfReference(pageId.Value));
+            field.Add("/T", new PdfString(zone.Id));
+            field.Add("/F", new PdfNumber(4)); // Print flag
+
+            if (zone.Id == signNow)
+            {
+                signature = new PdfSignature(_reservedSignatureSize) { ObjectId = nextId++ };
+                objects.Add(signature);
+                field.Add("/V", new PdfReference(signature.ObjectId.Value));
+            }
+
+            // The visible part is already drawn on the page by Chromium; the widget itself stays transparent
+            var appearance = CreateAppearance(w, h);
+            appearance.ObjectId = nextId++;
+            objects.Add(appearance);
+
+            var apDict = new PdfDictionary();
+            apDict.Add("/N", new PdfReference(appearance.ObjectId.Value));
+            field.Add("/AP", apDict);
+
+            objects.Add(field);
+            newFieldRefs.Add(new PdfReference(field.ObjectId.Value));
+
+            if (pageId == null) continue;
+            if (!widgetsByPage.TryGetValue(pageId.Value, out var widgets))
+                widgetsByPage[pageId.Value] = widgets = new List<PdfObject>();
+            widgets.Add(new PdfReference(field.ObjectId.Value));
+        }
+
+        // AcroForm: extend the existing one, or create it and hook it into the catalog
+        var catalog = reader.GetDictionary(reader.RootId)
+                      ?? throw new InvalidDataException("Not a valid PDF: the document catalog could not be read.");
+
+        var acroFormId = 0;
+        var hasAcroForm = catalog.TryGet("/AcroForm", out var acroFormToken);
+        var acroFormIsIndirect = hasAcroForm && acroFormToken.TryGetReference(out acroFormId);
+        var existingAcroForm = hasAcroForm ? reader.ResolveDictionary(acroFormToken) : null;
+
+        var acroForm = BuildAcroForm(reader, existingAcroForm, newFieldRefs);
+        acroForm.ObjectId = acroFormIsIndirect && existingAcroForm != null ? acroFormId : nextId++;
+        objects.Add(acroForm);
+
+        if (!acroFormIsIndirect || existingAcroForm == null)
+        {
+            var updatedCatalog = CopyDictionary(catalog, "/AcroForm");
+            updatedCatalog.ObjectId = reader.RootId;
+            updatedCatalog.Add("/AcroForm", new PdfReference(acroForm.ObjectId.Value));
+            objects.Add(updatedCatalog);
+        }
+
+        // Pages: add the new widgets to /Annots, keeping whatever annotations are already there
+        foreach (var (pageId, widgets) in widgetsByPage)
+        {
+            var page = reader.GetDictionary(pageId);
+            if (page == null) continue;
+
+            var annots = new PdfArray();
+            if (page.TryGet("/Annots", out var annotsToken))
+                foreach (var annot in reader.ResolveArray(annotsToken))
+                    annots.Add(new PdfRawObject(annot.ToArray()));
+            foreach (var widget in widgets) annots.Add(widget);
+
+            var updatedPage = CopyDictionary(page, "/Annots");
+            updatedPage.ObjectId = pageId;
+            updatedPage.Add("/Annots", annots);
+            objects.Add(updatedPage);
+        }
+
+        WriteUpdate(output, reader, objects, nextId);
+        return signature;
+    }
+
+    /// <summary>
+    /// Appends the update that signs an existing, unsigned field: a new signature dictionary plus the
+    /// field re-written to point at it.
+    /// </summary>
+    private PdfSignature WriteSignatureUpdate(MemoryStream output, PdfFileReader reader, FieldInfo field)
+    {
+        var objects = new List<PdfObject>();
+        var nextId = reader.Size;
+
+        var signature = new PdfSignature(_reservedSignatureSize) { ObjectId = nextId++ };
+        objects.Add(signature);
+
+        var updatedField = CopyDictionary(field.Dictionary, "/V");
+        updatedField.ObjectId = field.ObjectId;
+        updatedField.Add("/V", new PdfReference(signature.ObjectId.Value));
+        objects.Add(updatedField);
+
+        // Readers only treat the form as signed when /SigFlags says so; fix it up if another tool left it out
+        var catalog = reader.GetDictionary(reader.RootId);
+        if (catalog != null && catalog.TryGet("/AcroForm", out var acroFormToken) &&
+            acroFormToken.TryGetReference(out var acroFormId) &&
+            reader.GetDictionary(acroFormId) is { } acroForm && !HasSigFlags(reader, acroForm))
+        {
+            var updatedAcroForm = BuildAcroForm(reader, acroForm, []);
+            updatedAcroForm.ObjectId = acroFormId;
+            objects.Add(updatedAcroForm);
+        }
+
+        WriteUpdate(output, reader, objects, nextId);
+        return signature;
+    }
+
+    private static bool HasSigFlags(PdfFileReader reader, PdfDictionaryToken acroForm)
+    {
+        return acroForm.TryGet("/SigFlags", out var flags) && reader.Resolve(flags) is { } resolved &&
+               resolved.TryGetNumber(out var value) && ((int)value & 3) == 3;
+    }
+
+    private static PdfDictionary BuildAcroForm(PdfFileReader reader, PdfDictionaryToken? existing, List<PdfObject> newFields)
+    {
+        var fields = new PdfArray();
+        var acroForm = new PdfDictionary();
+
+        if (existing != null)
+        {
+            foreach (var (key, value) in existing.Entries)
+            {
+                if (key is "/Fields" or "/SigFlags") continue;
+                acroForm.Add(key, new PdfRawObject(value.ToArray()));
+            }
+
+            if (existing.TryGet("/Fields", out var fieldsToken))
+                foreach (var field in reader.ResolveArray(fieldsToken))
+                    fields.Add(new PdfRawObject(field.ToArray()));
+        }
+
+        foreach (var field in newFields) fields.Add(field);
+
+        acroForm.Add("/Fields", fields);
+        acroForm.Add("/SigFlags", new PdfNumber(3)); // SignaturesExist | AppendOnly
+        return acroForm;
+    }
+
+    /// <summary>Copies a dictionary byte-for-byte, leaving out the keys that are about to be replaced.</summary>
+    private static PdfDictionary CopyDictionary(PdfDictionaryToken source, params string[] except)
+    {
+        var copy = new PdfDictionary();
+        foreach (var (key, value) in source.Entries)
+        {
+            if (Array.IndexOf(except, key) >= 0) continue;
+            copy.Add(key, new PdfRawObject(value.ToArray()));
+        }
+
+        return copy;
+    }
+
+    /// <summary>
+    /// Appends objects, their cross-reference section and a trailer chained to the previous one.
+    /// </summary>
+    private static void WriteUpdate(MemoryStream output, PdfFileReader reader, List<PdfObject> objects, int nextId)
+    {
+        output.Seek(0, SeekOrigin.End);
+        var writer = new BinaryWriter(output, Encoding.ASCII, leaveOpen: true);
+        var offsets = new SortedDictionary<int, long>();
+
+        foreach (var obj in objects)
+        {
+            writer.Write((byte)'\n');
+            writer.Flush();
+            // The xref entry must point at the object number itself, not at the newline before it
+            offsets[obj.ObjectId!.Value] = output.Position;
+            writer.Write(Encoding.ASCII.GetBytes($"{obj.ObjectId} {obj.Generation} obj\n"));
+            // PdfSignature records where its /Contents and /ByteRange placeholders land in the stream
+            obj.WriteTo(writer);
+            writer.Write("\nendobj\n"u8);
+        }
+
+        writer.Write((byte)'\n');
+        writer.Flush();
+        var xrefOffset = output.Position;
+        writer.Write("xref\n"u8);
+
+        // Consecutive object numbers share a subsection: "first count"
+        var ids = offsets.Keys.ToList();
+        for (var i = 0; i < ids.Count;)
+        {
+            var count = 1;
+            while (i + count < ids.Count && ids[i + count] == ids[i] + count) count++;
+
+            writer.Write(Encoding.ASCII.GetBytes($"{ids[i]} {count}\n"));
+            for (var n = 0; n < count; n++)
+                writer.Write(Encoding.ASCII.GetBytes($"{offsets[ids[i + n]]:D10} 00000 n \n"));
+
+            i += count;
+        }
+
+        // The new trailer repeats the previous one (root, info, id) and links back to it through /Prev
+        var trailer = new PdfDictionary();
+        trailer.Add("/Size", new PdfNumber(Math.Max(reader.Size, nextId)));
+        foreach (var key in new[] { "/Root", "/Info", "/ID" })
+            if (reader.Trailer.TryGet(key, out var value))
+                trailer.Add(key, new PdfRawObject(value.ToArray()));
+        trailer.Add("/Prev", new PdfNumber(reader.LastStartXref.ToString()));
+
+        writer.Write("trailer\n"u8);
+        writer.Write(trailer.GetBytes());
+        writer.Write(Encoding.ASCII.GetBytes($"\nstartxref\n{xrefOffset}\n%%EOF\n"));
+        writer.Flush();
+    }
+
+    // ------------------------------------------------------------------ signing
+
+    /// <summary>
+    /// Fills in /ByteRange and /Contents of a signature dictionary that was just written at the end of
+    /// <paramref name="output"/>. The signature covers the entire file except the /Contents value itself.
+    /// </summary>
+    private void ApplySignature(MemoryStream output, PdfSignature signature, X509Certificate2 certificate)
+    {
+        var pdf = output.GetBuffer();
+        var length = (int)output.Length;
+
+        var contentsStart = (int)signature.ContentsOffset; // the '<'
+        var contentsLength = _reservedSignatureSize; // '<' + hex digits + '>'
+
+        var part1Length = contentsStart;
+        var part2Start = contentsStart + contentsLength;
+        var part2Length = length - part2Start;
+
+        var byteRange = Encoding.ASCII.GetBytes($"[0 {part1Length} {part2Start} {part2Length}]".PadRight(64));
+        Buffer.BlockCopy(byteRange, 0, pdf, (int)signature.ByteRangeOffset, byteRange.Length);
+
+        /*
+         * A detached CMS signature must be computed over the signed byte ranges themselves; SignedCms does
+         * the hashing. Passing a pre-computed hash as the content made it sign the hash of the hash, which
+         * every validator rejects ("signature is invalid / document has been altered").
+         */
+        var signedContent = new byte[part1Length + part2Length];
+        Buffer.BlockCopy(pdf, 0, signedContent, 0, part1Length);
+        Buffer.BlockCopy(pdf, part2Start, signedContent, part1Length, part2Length);
+
+        var signedCms = new SignedCms(new ContentInfo(signedContent), true);
         var cmsSigner = new CmsSigner(certificate)
         {
             DigestAlgorithm = new Oid("2.16.840.1.101.3.4.2.1") // SHA256
         };
 
         signedCms.ComputeSignature(cmsSigner);
-        var signatureBytes = signedCms.Encode();
+        var hex = Encoding.ASCII.GetBytes(Convert.ToHexString(signedCms.Encode()));
 
-        var hexSignature = BitConverter.ToString(signatureBytes).Replace("-", "");
-        var hexBytes = Encoding.ASCII.GetBytes(hexSignature);
-        
-        Array.Copy(hexBytes, 0, pdfBytes, contentsStart + 1, hexBytes.Length);
+        if (hex.Length > contentsLength - 2)
+            throw new InvalidOperationException(
+                $"The signature needs {hex.Length} characters but only {contentsLength - 2} are reserved. " +
+                $"Increase {nameof(ReservedSignatureSize)}.");
+
+        Buffer.BlockCopy(hex, 0, pdf, contentsStart + 1, hex.Length);
     }
 
-    private long GetContentsRelativeOffset(PdfSignature sig)
+    // ------------------------------------------------------------------ fields
+
+    private sealed record FieldInfo(string Name, int ObjectId, bool IsSigned, PdfDictionaryToken Dictionary);
+
+    /// <summary>Lists the signature fields reachable from the catalog's AcroForm.</summary>
+    private static List<FieldInfo> ReadFields(PdfFileReader reader)
     {
-        // Estimate based on PdfSignature.WriteTo
-        // << /Type /Sig  /Filter /Adobe.PPKLite /SubFilter /adbe.pkcs7.detached  /M (D:...)  /Contents 
-        using var ms = new MemoryStream();
-        using var writer = new BinaryWriter(ms);
-        sig.WriteTo(writer);
-        return sig.ContentsOffset;
+        var result = new List<FieldInfo>();
+
+        var catalog = reader.GetDictionary(reader.RootId);
+        if (catalog == null || !catalog.TryGet("/AcroForm", out var acroFormToken)) return result;
+
+        var acroForm = reader.ResolveDictionary(acroFormToken);
+        if (acroForm == null || !acroForm.TryGet("/Fields", out var fieldsToken)) return result;
+
+        foreach (var field in reader.ResolveArray(fieldsToken))
+            CollectFields(reader, field, null, false, result, 0);
+
+        return result;
     }
 
-    private long GetByteRangeRelativeOffset(PdfSignature sig)
+    private static void CollectFields(PdfFileReader reader, PdfToken token, string? parentName, bool parentIsSignature,
+        List<FieldInfo> result, int depth)
     {
-        using var ms = new MemoryStream();
-        using var writer = new BinaryWriter(ms);
-        sig.WriteTo(writer);
-        return sig.ByteRangeOffset;
-    }
+        if (depth > 16 || !token.TryGetReference(out var objectId)) return;
 
-    private long FindLastStartXref()
-    {
-        // Search backwards for startxref
-        var marker = Encoding.ASCII.GetBytes("startxref");
-        for (var i = _pdfBytes.Length - marker.Length; i >= 0; i--)
+        var dictionary = reader.GetDictionary(objectId);
+        if (dictionary == null) return;
+
+        // Field names are hierarchical: a child's full name is "parent.child"
+        var partialName = dictionary.TryGet("/T", out var nameToken) ? reader.Resolve(nameToken)?.AsText() : null;
+        var name = partialName == null ? parentName : parentName == null ? partialName : $"{parentName}.{partialName}";
+
+        var isSignature = parentIsSignature;
+        if (dictionary.TryGet("/FT", out var typeToken))
+            isSignature = reader.Resolve(typeToken)?.AsName() == "/Sig";
+
+        // Kids that have a name of their own are fields; kids without one are just this field's widgets
+        var hasChildFields = false;
+        if (dictionary.TryGet("/Kids", out var kidsToken))
         {
-            var match = true;
-            for (var j = 0; j < marker.Length; j++)
+            foreach (var kid in reader.ResolveArray(kidsToken))
             {
-                if (_pdfBytes[i + j] != marker[j])
-                {
-                    match = false;
-                    break;
-                }
-            }
+                if (!kid.TryGetReference(out var kidId) || reader.GetDictionary(kidId) is not { } kidDictionary) continue;
+                if (!kidDictionary.ContainsKey("/T")) continue;
 
-            if (!match) continue;
-            
-            var text = Encoding.ASCII.GetString(_pdfBytes, i + 9, Math.Min(100, _pdfBytes.Length - (i + 9)));
-            var nextLine = text.TrimStart();
-            var endOfNumber = 0;
-            while (endOfNumber < nextLine.Length && char.IsDigit(nextLine[endOfNumber])) endOfNumber++;
-                
-            if (long.TryParse(nextLine.Substring(0, endOfNumber), out var offset)) return offset;
-        }
-        return -1;
-    }
-
-    private PdfDictionary ParseTrailer(long startxref)
-    {
-        // Find trailer keyword
-        var trailerMarker = Encoding.ASCII.GetBytes("trailer");
-        var trailerIndex = -1;
-        for (var i = (int)startxref; i <= _pdfBytes.Length - trailerMarker.Length; i++)
-        {
-            var match = true;
-            for (var j = 0; j < trailerMarker.Length; j++)
-            {
-                if (_pdfBytes[i + j] == trailerMarker[j]) continue;
-                match = false;
-                break;
-            }
-            if (match)
-            {
-                trailerIndex = i;
-                break;
+                hasChildFields = true;
+                CollectFields(reader, kid, name, isSignature, result, depth + 1);
             }
         }
 
-        if (trailerIndex == -1) throw new Exception("Trailer not found");
-        
-        var text = Encoding.ASCII.GetString(_pdfBytes, trailerIndex, Math.Min(2048, _pdfBytes.Length - trailerIndex));
-        
-        var dict = new PdfDictionary();
-        
-        // Extract Root
-        var rootMatch = System.Text.RegularExpressions.Regex.Match(text, @"/Root\s+(\d+)\s+(\d+)\s+R");
-        if (rootMatch.Success)
-        {
-            dict.Add("/Root", new PdfReference(int.Parse(rootMatch.Groups[1].Value)));
-        }
-        
-        return dict;
-    }
+        if (hasChildFields || !isSignature || name == null) return;
 
-    private PdfReference? FindPageRef(PdfReference rootRef, int pageNumber)
-    {
-        // Follow Root -> Pages -> Kids
-        var rootText = GetObjectText(rootRef.Id);
-        var pagesMatch = System.Text.RegularExpressions.Regex.Match(rootText, @"/Pages\s+(\d+)\s+\d+\s+R");
-        if (!pagesMatch.Success) return null;
-
-        var pagesId = int.Parse(pagesMatch.Groups[1].Value);
-        var pagesText = GetObjectText(pagesId);
-        
-        // Match all kids in Kids array
-        var kidsMatch = System.Text.RegularExpressions.Regex.Match(pagesText, @"/Kids\s*\[([^\]]*)\]");
-        if (!kidsMatch.Success) return null;
-        var kidsRefs = kidsMatch.Groups[1].Value;
-        var refMatches = System.Text.RegularExpressions.Regex.Matches(kidsRefs, @"(\d+)\s+\d+\s+R");
-            
-        if (pageNumber > 0 && pageNumber <= refMatches.Count)
-        {
-            return new PdfReference(int.Parse(refMatches[pageNumber - 1].Groups[1].Value));
-        }
-
-        return null;
-    }
-
-    private string GetObjectText(int id)
-    {
-        // Search in binary for "{id} 0 obj" - more robust pattern
-        var marker = Encoding.ASCII.GetBytes($"\n{id} 0 obj");
-        var startIndex = -1;
-        
-        startIndex = FindInBinary(_pdfBytes, marker);
-        
-        if (startIndex == -1)
-        {
-            var marker2 = Encoding.ASCII.GetBytes($"{id} 0 obj");
-            startIndex = FindInBinary(_pdfBytes, marker2);
-        }
-        
-        if (startIndex == -1) return "";
-        
-        if (_pdfBytes[startIndex] == '\n' || _pdfBytes[startIndex] == '\r') startIndex++;
-
-        var endMarker = Encoding.ASCII.GetBytes("endobj");
-        var endIndex = FindInBinary(_pdfBytes, endMarker, startIndex);
-        
-        return endIndex == -1 ? "" : Encoding.ASCII.GetString(_pdfBytes, startIndex, endIndex - startIndex + 6);
-    }
-
-    private int FindInBinary(byte[] haystack, byte[] needle, int startSearch = 0)
-    {
-        for (var i = startSearch; i <= haystack.Length - needle.Length; i++)
-        {
-            var match = true;
-            for (var j = 0; j < needle.Length; j++)
-            {
-                if (haystack[i + j] == needle[j]) continue;
-                
-                match = false;
-                break;
-            }
-            if (match) return i;
-        }
-        return -1;
-    }
-
-    private int FindMaxId()
-    {
-        var text = Encoding.ASCII.GetString(_pdfBytes);
-        var matches = System.Text.RegularExpressions.Regex.Matches(text, @"(\d+)\s+\d+\s+obj");
-        var maxId = 0;
-        foreach (System.Text.RegularExpressions.Match match in matches)
-        {
-            if (int.TryParse(match.Groups[1].Value, out var id) && id > maxId) maxId = id;
-        }
-        
-        // Also check startxref trailer
-        var lastStartXref = FindLastStartXref();
-        if (lastStartXref == -1) return maxId;
-        
-        // Look for trailer after the last xref
-        var trailerIndex = FindInBinary(_pdfBytes, Encoding.ASCII.GetBytes("trailer"), (int)lastStartXref);
-        if (trailerIndex == -1) return maxId;
-             
-        var trailerText = Encoding.ASCII.GetString(_pdfBytes, trailerIndex, Math.Min(1024, _pdfBytes.Length - trailerIndex));
-        var sizeMatch = System.Text.RegularExpressions.Regex.Match(trailerText, @"/Size\s+(\d+)");
-        
-        if (!sizeMatch.Success || !int.TryParse(sizeMatch.Groups[1].Value, out var size)) return maxId;
-        if (size - 1 > maxId) maxId = size - 1;
-
-        return maxId;
+        var isSigned = dictionary.TryGet("/V", out var valueToken) &&
+                       reader.Resolve(valueToken) is { Kind: PdfTokenKind.Dictionary };
+        result.Add(new FieldInfo(name, objectId, isSigned, dictionary));
     }
 
     /// <summary>
@@ -549,16 +558,17 @@ public class PdfSigner
     /// is relative to itself (0,0). The absolute positioning on the page is handled by the
     /// /Rect entry in the signature field dictionary.
     /// </remarks>
-    private PdfStreamObject CreateAppearance(double w, double h)
+    private static PdfStreamObject CreateAppearance(double w, double h)
     {
         var dict = new PdfDictionary();
         dict.Add("/Type", new PdfName("/XObject"));
         dict.Add("/Subtype", new PdfName("/Form"));
         dict.Add("/BBox", new PdfArray(new PdfNumber(0), new PdfNumber(0), new PdfNumber(w), new PdfNumber(h)));
-        dict.Add("/Resources", new PdfDictionary()); 
-        
+        dict.Add("/Resources", new PdfDictionary());
+
         var content = "% Transparent appearance";
-        
+        dict.Add("/Length", new PdfNumber(content.Length));
+
         return new PdfStreamObject(dict, content);
     }
 }

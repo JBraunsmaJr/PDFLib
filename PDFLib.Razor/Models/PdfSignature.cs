@@ -18,7 +18,7 @@ public class PdfSignature : PdfObject
         _dict.Add("/Type", new PdfName("/Sig"));
         _dict.Add("/Filter", new PdfName("/Adobe.PPKLite"));
         _dict.Add("/SubFilter", new PdfName("/adbe.pkcs7.detached"));
-        _dict.Add("/M", new PdfString($"D:{DateTime.Now:yyyyMMddHHmmss}Z"));
+        _dict.Add("/M", new PdfString($"D:{DateTime.UtcNow:yyyyMMddHHmmss}Z"));
     }
 
     /// <summary>
@@ -93,8 +93,12 @@ internal class PdfPlaceholder : PdfObject
         // Likely contents, use < > for hex
         if (_size > 100)
         {
+            // Pad with '0' digits, not NUL bytes: the unused tail has to remain a valid hex string
+            // of the reserved length for validators to accept that the whole file is covered.
+            var padding = new byte[_size - 2];
+            padding.AsSpan().Fill((byte)'0');
             writer.Write((byte)'<');
-            writer.Write(new byte[_size - 2]);
+            writer.Write(padding);
             writer.Write((byte)'>');
         }
         // Likely ByteRange, use [ ]

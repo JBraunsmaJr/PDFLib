@@ -33,11 +33,13 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: '11.0.x'
       - name: Run test.sh
         run: |
           chmod +x PDFLib.Chromium.TestConsole/test.sh
           ./PDFLib.Chromium.TestConsole/test.sh
+      - name: Run Unit Tests
+        run: dotnet test PDFLib.Chromium.Tests/PDFLib.Chromium.Tests.csproj
       - name: Run Hosting Tests
         run: dotnet test PDFLib.Chromium.Hosting.Test/PDFLib.Chromium.Hosting.Test.csproj
 

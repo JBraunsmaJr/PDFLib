@@ -1,6 +1,7 @@
 using System.Buffers;
 using System.Collections.Concurrent;
 using System.IO.Pipelines;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 
 namespace PDFLib.Chromium.RPC;
@@ -10,15 +11,16 @@ namespace PDFLib.Chromium.RPC;
 /// </summary>
 public class CdpDispatcher
 {
-    private readonly ConcurrentDictionary<string, List<Action<JsonElement>>> _eventHandlers = new();
+    private readonly ConcurrentDictionary<string, List<EventSubscription>> _eventHandlers = new();
     private readonly List<string> _fastCacheList = new();
     private readonly ConcurrentDictionary<int, IResponseHandler> _pendingRequests = new();
     private readonly PipeReader _pipeReader;
     private readonly ConcurrentDictionary<string, string> _stringCache = new(StringComparer.Ordinal);
-    private readonly ArrayBufferWriter<byte> _writeBuffer = new(4096);
+    private ArrayBufferWriter<byte> _writeBuffer = new(4096);
     private readonly Stream _writer;
     private readonly SemaphoreSlim _writeSemaphore = new(1, 1);
     private int _nextId;
+    private volatile Exception? _fault;
 
     #region PreAllocated
 
@@ -32,6 +34,31 @@ public class CdpDispatcher
     private static readonly JsonEncodedText SessionIdEncoded = JsonEncodedText.Encode("sessionId"u8);
     private static readonly byte[] EmptyParamsBytes = "{}"u8.ToArray();
 
+    /*
+     * The default encoder escapes <, >, &, ', " and all non-ASCII as \uXXXX (6 bytes each). HTML is mostly
+     * made of those characters, so Page.setDocumentContent payloads were several times larger than needed.
+     * This is JSON over a private pipe, never embedded in markup, so the relaxed encoder is safe here.
+     */
+    private static readonly JsonSerializerOptions ParamsSerializerOptions = new()
+    {
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+    };
+
+    private static readonly JsonWriterOptions WriterOptions = new()
+    {
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+    };
+
+    // Don't hold on to a huge write buffer forever just because one document was huge
+    private const int MaxRetainedWriteBuffer = 1024 * 1024;
+
+    private readonly record struct EventSubscription(string? SessionId, Action<JsonElement> Handler);
+
+    private readonly record struct LargeStringParams(string SmallName, string? SmallValue, string LargeName, string LargeValue);
+
+    private const int LargeStringSegmentChars = 32 * 1024;
+    private const int LargeStringDrainThreshold = 64 * 1024;
+
     #endregion
     
     /// <summary>
@@ -42,16 +69,28 @@ public class CdpDispatcher
     public CdpDispatcher(Stream writer, Stream reader)
     {
         _writer = writer;
-        _pipeReader = PipeReader.Create(reader);
+        /*
+         * PDF data arrives as ~350KB messages. With the default 4KB buffer each message took ~85 reads
+         * and produced an 85-segment sequence; 64KB matches the default Linux pipe capacity.
+         */
+        _pipeReader = PipeReader.Create(reader, new StreamPipeReaderOptions(bufferSize: 64 * 1024, minimumReadSize: 16 * 1024));
         Task.Run(ReadLoop);
     }
 
     /// <summary>
-    /// Registers an event handler for a specific CDP method.
+    /// Registers an event handler for a specific CDP method, for events from every session.
     /// </summary>
     /// <param name="method">Method to handle from CDP</param>
     /// <param name="handler">Handler for the specified CDP method</param>
-    public void On(string method, Action<JsonElement> handler)
+    public void On(string method, Action<JsonElement> handler) => On(method, null, handler);
+
+    /// <summary>
+    /// Registers an event handler for a specific CDP method, limited to events from one session (page).
+    /// </summary>
+    /// <param name="method">Method to handle from CDP</param>
+    /// <param name="sessionId">Only events from this session are delivered. Null delivers events from all sessions.</param>
+    /// <param name="handler">Handler for the specified CDP method</param>
+    public void On(string method, string? sessionId, Action<JsonElement> handler)
     {
         // Add to fast cache list for iteration
         if (_stringCache.TryAdd(method, method))
@@ -60,11 +99,12 @@ public class CdpDispatcher
                 _fastCacheList.Add(method);
             }
 
-        _eventHandlers.AddOrUpdate(method, _ => [handler], (_, list) =>
+        var subscription = new EventSubscription(sessionId, handler);
+        _eventHandlers.AddOrUpdate(method, _ => [subscription], (_, list) =>
         {
             lock (list)
             {
-                list.Add(handler);
+                list.Add(subscription);
             }
 
             return list;
@@ -81,7 +121,8 @@ public class CdpDispatcher
         if (!_eventHandlers.TryGetValue(method, out var list)) return;
         lock (list)
         {
-            list.Remove(handler);
+            var index = list.FindIndex(s => s.Handler == handler);
+            if (index >= 0) list.RemoveAt(index);
         }
     }
 
@@ -94,26 +135,81 @@ public class CdpDispatcher
     /// <param name="handler">The handler to process the response.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
-    public async Task SendCommandInternalAsync(string method, object? @params, string? sessionId,
+    public Task SendCommandInternalAsync(string method, object? @params, string? sessionId,
         IResponseHandler handler, CancellationToken cancellationToken = default)
     {
+        return SendCoreAsync(method, @params, sessionId, handler, null, cancellationToken);
+    }
+
+    private async Task<int> SendCoreAsync(string method, object? @params, string? sessionId,
+        IResponseHandler handler, LargeStringParams? large, CancellationToken cancellationToken)
+    {
+        if (_fault is { } fault) throw new IOException("The CDP connection is closed.", fault);
+
         var id = Interlocked.Increment(ref _nextId);
         _pendingRequests[id] = handler;
 
-        await _writeSemaphore.WaitAsync(cancellationToken);
+        // The read loop may have died between the check above and registering the handler
+        if (_fault is { } lateFault)
+        {
+            _pendingRequests.TryRemove(id, out _);
+            throw new IOException("The CDP connection is closed.", lateFault);
+        }
+
         try
         {
-            _writeBuffer.Clear();
+            await _writeSemaphore.WaitAsync(cancellationToken);
+        }
+        catch
+        {
+            _pendingRequests.TryRemove(id, out _);
+            throw;
+        }
+
+        try
+        {
+            // ResetWrittenCount rather than Clear: Clear zeroes the whole buffer, which is wasted work
+            // for every command sent after a large document.
+            _writeBuffer.ResetWrittenCount();
 
             // ReSharper disable once UseAwaitUsing
             // Await using would introduce context-switching and extra memory for async structure
-            using (var writer = new Utf8JsonWriter(_writeBuffer))
+            using (var writer = new Utf8JsonWriter(_writeBuffer, WriterOptions))
             {
                 writer.WriteStartObject();
                 writer.WriteNumber(IdEncoded, id);
                 writer.WriteString(MethodEncoded, method);
                 writer.WritePropertyName(ParamsEncoded);
-                if (@params != null) JsonSerializer.Serialize(writer, @params, @params.GetType());
+                if (large is { } l)
+                {
+                    /*
+                     * Utf8JsonWriter reserves worst-case space (several bytes per char) for a string before
+                     * writing it, so sending a 30MB document in one go allocated hundreds of MB. Writing it in
+                     * segments and draining the buffer into the pipe as we go keeps this at a few hundred KB.
+                     */
+                    writer.WriteStartObject();
+                    writer.WriteString(l.SmallName, l.SmallValue);
+                    writer.WritePropertyName(l.LargeName);
+
+                    var remaining = l.LargeValue.AsMemory();
+                    do
+                    {
+                        var take = Math.Min(LargeStringSegmentChars, remaining.Length);
+                        writer.WriteStringValueSegment(remaining.Span[..take], take == remaining.Length);
+                        remaining = remaining[take..];
+                        await writer.FlushAsync(cancellationToken);
+
+                        if (_writeBuffer.WrittenCount >= LargeStringDrainThreshold)
+                        {
+                            // Not cancellable: stopping half way through a message would corrupt the protocol stream
+                            await _writer.WriteAsync(_writeBuffer.WrittenMemory, CancellationToken.None);
+                            _writeBuffer.ResetWrittenCount();
+                        }
+                    } while (remaining.Length > 0);
+
+                    writer.WriteEndObject();
+                }
+                else if (@params != null) JsonSerializer.Serialize(writer, @params, @params.GetType(), ParamsSerializerOptions);
                 else writer.WriteRawValue(EmptyParamsBytes);
                 if (!string.IsNullOrEmpty(sessionId)) writer.WriteString(SessionIdEncoded, sessionId);
                 writer.WriteEndObject();
@@ -125,13 +221,19 @@ public class CdpDispatcher
             await _writer.WriteAsync(_writeBuffer.WrittenMemory, cancellationToken);
             await _writer.FlushAsync(cancellationToken);
         }
+        catch
+        {
+            _pendingRequests.TryRemove(id, out _);
+            throw;
+        }
         finally
         {
+            if (_writeBuffer.Capacity > MaxRetainedWriteBuffer) _writeBuffer = new ArrayBufferWriter<byte>(4096);
             _writeSemaphore.Release();
         }
-    }
 
-    private readonly JsonResponseHandler _reusableJsonResponseHandler = new();
+        return id;
+    }
 
     /// <summary>
     /// Sends a command to the CDP
@@ -141,49 +243,99 @@ public class CdpDispatcher
     /// <param name="sessionId">SessionID is how we identify where to send the data to</param>
     /// <param name="cancellationToken"></param>
     /// <returns>JsonDocument that CDP returns. Caller MUST dispose it.</returns>
-    public async Task<JsonDocument?> SendCommandAsync(string method, object? @params = null, string? sessionId = null,
+    public Task<JsonDocument?> SendCommandAsync(string method, object? @params = null, string? sessionId = null,
         CancellationToken cancellationToken = default)
     {
-        var handler = _reusableJsonResponseHandler;
-        handler.Reset();
-        await SendCommandInternalAsync(method, @params, sessionId, handler, cancellationToken);
-        return await handler.Task;
+        return SendCommandAsync(method, @params, sessionId, null, cancellationToken);
+    }
+
+    /// <summary>
+    /// Sends a command whose params are one small string plus one potentially huge string (e.g. a whole
+    /// HTML document), streaming the large value to the browser instead of buffering the entire command.
+    /// </summary>
+    internal Task<JsonDocument?> SendCommandWithLargeStringAsync(string method, string? sessionId,
+        string smallName, string? smallValue, string largeName, string largeValue,
+        CancellationToken cancellationToken = default)
+    {
+        return SendCommandAsync(method, null, sessionId,
+            new LargeStringParams(smallName, smallValue, largeName, largeValue), cancellationToken);
+    }
+
+    private async Task<JsonDocument?> SendCommandAsync(string method, object? @params, string? sessionId,
+        LargeStringParams? large, CancellationToken cancellationToken)
+    {
+        /*
+         * One handler per command. Sharing a single handler (and its TaskCompletionSource) between
+         * commands breaks as soon as two commands are in flight at once, e.g. concurrent renders.
+         */
+        var handler = new JsonResponseHandler();
+        var id = await SendCoreAsync(method, @params, sessionId, handler, large, cancellationToken);
+        try
+        {
+            return await handler.Task.WaitAsync(cancellationToken);
+        }
+        catch (OperationCanceledException) when (!handler.Task.IsCompleted)
+        {
+            // Stop tracking the command, and make sure a reply that still shows up gets disposed
+            _pendingRequests.TryRemove(id, out _);
+            _ = handler.Task.ContinueWith(static t =>
+            {
+                if (t.IsCompletedSuccessfully) t.Result?.Dispose();
+                else _ = t.Exception;
+            }, TaskScheduler.Default);
+            throw;
+        }
     }
 
     private async Task ReadLoop()
     {
+        Exception? failure = null;
         try
         {
+            // Bytes at the start of the buffer already known to contain no terminator. Without this,
+            // every read re-scanned the whole partial message from the beginning (quadratic for big messages).
+            long scanned = 0;
+
             while (true)
             {
                 var result = await _pipeReader.ReadAsync();
                 var buffer = result.Buffer;
-                while (TryReadMessage(ref buffer, out var message)) await ProcessMessageAsync(message);
+                while (TryReadMessage(ref buffer, ref scanned, out var message)) await ProcessMessageAsync(message);
                 _pipeReader.AdvanceTo(buffer.Start, buffer.End);
                 if (result.IsCompleted) break;
             }
         }
         catch (Exception ex)
         {
-            foreach (var handler in _pendingRequests.Values) handler.SetException(ex);
+            failure = ex;
         }
         finally
         {
+            // Whatever the reason we stopped reading (browser exited, pipe closed, bug), nobody is
+            // going to answer the outstanding commands. Fail them instead of letting callers hang.
+            _fault = failure ?? new EndOfStreamException("The browser closed the CDP pipe.");
+            foreach (var id in _pendingRequests.Keys)
+                if (_pendingRequests.TryRemove(id, out var handler))
+                    handler.SetException(_fault);
+
             await _pipeReader.CompleteAsync();
         }
     }
 
-    private bool TryReadMessage(ref ReadOnlySequence<byte> buffer, out ReadOnlySequence<byte> message)
+    private static bool TryReadMessage(ref ReadOnlySequence<byte> buffer, ref long scanned,
+        out ReadOnlySequence<byte> message)
     {
-        var position = buffer.PositionOf((byte)0);
+        var position = buffer.Slice(scanned).PositionOf((byte)0);
         if (position == null)
         {
+            scanned = buffer.Length;
             message = default;
             return false;
         }
 
         message = buffer.Slice(0, position.Value);
         buffer = buffer.Slice(buffer.GetPosition(1, position.Value));
+        scanned = 0;
         return true;
     }
 
@@ -200,7 +352,13 @@ public class CdpDispatcher
             if (reader.ValueTextEquals("id"u8))
             {
                 reader.Read();
-                if (reader.TokenType == JsonTokenType.Number) id = reader.GetInt32();
+                if (reader.TokenType == JsonTokenType.Number)
+                {
+                    id = reader.GetInt32();
+                    // It's a command response; the handler parses the rest. Don't tokenize a (possibly
+                    // several hundred KB) payload twice.
+                    break;
+                }
             }
             else if (reader.ValueTextEquals("method"u8))
             {
@@ -230,31 +388,53 @@ public class CdpDispatcher
 
         var eventReader = new Utf8JsonReader(message);
         JsonElement paramsElement = default;
+        string? eventSessionId = null;
 
         // Only parse params if strictly necessary (expensive)
         while (eventReader.Read())
         {
-            if (eventReader.TokenType == JsonTokenType.PropertyName && eventReader.ValueTextEquals("params"u8))
+            if (eventReader.TokenType != JsonTokenType.PropertyName) continue;
+
+            if (eventReader.ValueTextEquals("params"u8))
             {
                 eventReader.Read();
                 paramsElement = JsonElement.ParseValue(ref eventReader);
-                break;
             }
-
-            if (eventReader.TokenType == JsonTokenType.PropertyName) eventReader.Skip();
+            else if (eventReader.ValueTextEquals("sessionId"u8))
+            {
+                eventReader.Read();
+                eventSessionId = eventReader.GetString();
+            }
+            else
+            {
+                eventReader.Skip();
+            }
         }
 
         // Use a local copy of the handlers list to minimize lock duration
-        Action<JsonElement>[]? handlersArray = null;
+        EventSubscription[]? subscriptions = null;
         lock (handlers)
         {
             if (handlers.Count > 0)
-                handlersArray = handlers.ToArray();
+                subscriptions = handlers.ToArray();
         }
 
-        if (handlersArray != null)
+        if (subscriptions != null)
         {
-            foreach (var h in handlersArray) h(paramsElement);
+            foreach (var subscription in subscriptions)
+            {
+                // Events are multiplexed over one pipe; a page must not see another page's events
+                if (subscription.SessionId != null && subscription.SessionId != eventSessionId) continue;
+
+                try
+                {
+                    subscription.Handler(paramsElement);
+                }
+                catch
+                {
+                    // A faulty subscriber must not take down the read loop (and every pending command with it)
+                }
+            }
         }
     }
 
@@ -299,16 +479,10 @@ public class CdpDispatcher
 
     private class JsonResponseHandler : IResponseHandler
     {
-        private TaskCompletionSource<JsonDocument?> _tcs =
+        private readonly TaskCompletionSource<JsonDocument?> _tcs =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public Task<JsonDocument?> Task => _tcs.Task;
-
-        public void Reset()
-        {
-            if (_tcs.Task.IsCompleted)
-                _tcs = new TaskCompletionSource<JsonDocument?>(TaskCreationOptions.RunContinuationsAsynchronously);
-        }
 
         public ValueTask Handle(ReadOnlySequence<byte> message)
         {

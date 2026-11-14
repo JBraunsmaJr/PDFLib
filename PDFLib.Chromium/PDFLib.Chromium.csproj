@@ -32,6 +32,10 @@
     </ItemGroup>
 
     <ItemGroup>
+      <InternalsVisibleTo Include="PDFLib.Chromium.Tests" />
+    </ItemGroup>
+
+    <ItemGroup>
       <None Remove="FindSignatureAreas.js" />
       <EmbeddedResource Include="FindSignatureAreas.js" />
     </ItemGroup>

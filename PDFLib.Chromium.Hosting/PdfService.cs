@@ -34,8 +34,7 @@ public class PdfService : IHostedService
     /// <param name="cancellationToken">A cancellation token.</param>
     public async Task RenderPdfAsync(string html, Stream destinationStream, CancellationToken cancellationToken = default)
     {
-        await using var page = await _browser.CreatePageAsync();
-        await page.PrintToPdfAsync(html, destinationStream, null, cancellationToken);
+        await _browser.RenderPdfAsync(html, destinationStream, cancellationToken);
     }
 
     /// <summary>
@@ -53,10 +52,9 @@ public class PdfService : IHostedService
         Action<PdfSigner> setupSigner, 
         CancellationToken cancellationToken = default)
     {
-        await using var page = await _browser.CreatePageAsync();
         using var ms = new MemoryStream();
-        
-        var zones = await page.PrintToPdfAsync(html, ms, signatureInfo, cancellationToken);
+
+        var zones = await _browser.RenderPdfAsync(html, ms, signatureInfo, cancellationToken);
         
         var signer = new PdfSigner(ms.ToArray(), zones);
         setupSigner(signer);

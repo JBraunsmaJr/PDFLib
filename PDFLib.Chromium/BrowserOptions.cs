@@ -16,11 +16,36 @@ public class BrowserOptions
     public long MemoryThresholdMb { get; set; } = 1024;
 
     /// <summary>
+    /// Gets or sets how many idle pages (tabs) are kept warm for <see cref="ChromiumBrowser.RenderPdfAsync(string, Stream, CancellationToken)"/>
+    /// and <see cref="ChromiumBrowser.RentPageAsync"/>. Creating a tab starts a new renderer process, which costs far more
+    /// than the render itself for small documents. Each idle page keeps a renderer process alive, so this trades memory for speed.
+    /// Set to 0 to create a fresh page for every render. Defaults to the smaller of <see cref="Environment.ProcessorCount"/> and 4.
+    /// </summary>
+    public int PagePoolSize { get; set; } = Math.Min(Environment.ProcessorCount, 4);
+
+    /// <summary>
+    /// Gets or sets how many renders a pooled page serves before it is closed and replaced, which bounds
+    /// memory growth in long-lived renderer processes. Defaults to 100.
+    /// </summary>
+    public int MaxRendersPerPage { get; set; } = 100;
+
+    /// <summary>
     /// Gets or sets the path to the Chromium binary. 
     /// If not set, the library will attempt to find the bundled binary in the runtimes folder,
     /// or fall back to "chrome-shell" in the system PATH.
     /// </summary>
     public string? BinaryPath { get; set; }
+
+    /// <summary>
+    /// Gets or sets how long (in milliseconds) to wait for Chromium to start answering commands. Defaults to 10 seconds.
+    /// </summary>
+    public int StartupTimeoutMs { get; set; } = 10_000;
+
+    /// <summary>
+    /// Gets or sets extra command line switches passed to Chromium after the built-in ones,
+    /// e.g. <c>--font-render-hinting=none</c> or <c>--proxy-server=...</c>.
+    /// </summary>
+    public IList<string> AdditionalArguments { get; set; } = new List<string>();
 
     /// <summary>
     /// Gets or sets the strategy to use when waiting for the page to be ready for rendering.
@@ -40,7 +65,7 @@ public class BrowserOptions
     /// <summary>
     /// Gets or sets the maximum time to wait for the page to be ready (in milliseconds). Set to null for no timeout.
     /// </summary>
-    public int? WaitTimeoutMs { get; set; } = TimeSpan.FromSeconds(10).Milliseconds;
+    public int? WaitTimeoutMs { get; set; } = (int)TimeSpan.FromSeconds(10).TotalMilliseconds;
 }
 
 /// <summary>

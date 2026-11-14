@@ -65,6 +65,18 @@ builder.Services.AddPdfService(builder.Configuration.GetSection("Chromium"));
 }
 ```
 
+### Options
+
+| Option | Default | Meaning |
+|---|---|---|
+| `MaxConcurrentRenders` | `ProcessorCount` | PDFs printed at the same time. |
+| `PagePoolSize` | `min(ProcessorCount, 4)` | Idle pages kept warm between renders (`0` disables pooling). |
+| `MaxRendersPerPage` | `100` | Renders a pooled page serves before it is replaced. |
+| `BinaryPath` | bundled binary | Path to `chrome-headless-shell`. |
+| `AdditionalArguments` | none | Extra Chromium switches, e.g. `--font-render-hinting=none`. |
+| `StartupTimeoutMs` | `10000` | How long to wait for Chromium to start. |
+| `WaitStrategy` / `WaitTimeoutMs` | `Load` / `10000` | See [wait strategies](wait-strategies.md). |
+
 ## Usage
 
 Inject `PdfService` into your controllers or services:

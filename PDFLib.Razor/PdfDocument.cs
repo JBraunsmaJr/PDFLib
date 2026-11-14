@@ -328,41 +328,19 @@ public class PdfDocument : IDisposable
         var byteRangeBytes = Encoding.ASCII.GetBytes(byteRange.PadRight(64));
         _outputStream.Write(byteRangeBytes, 0, byteRangeBytes.Length);
 
-        byte[] hash;
-        using (var sha = SHA256.Create())
-        {
-            _outputStream.Seek(0, SeekOrigin.Begin);
-
-            var buffer = new byte[8192];
-            int read;
-            long totalRead = 0;
-
-            // Hash Part 1
-            while (totalRead < part1Length)
-            {
-                read = _outputStream.Read(buffer, 0, (int)Math.Min(buffer.Length, part1Length - totalRead));
-                if (read == 0) break;
-                sha.TransformBlock(buffer, 0, read, null, 0);
-                totalRead += read;
-            }
-
-            // Hash Part 2
-            _outputStream.Seek(part2Start, SeekOrigin.Begin);
-            totalRead = 0;
-            while (totalRead < part2Length)
-            {
-                read = _outputStream.Read(buffer, 0, (int)Math.Min(buffer.Length, part2Length - totalRead));
-                if (read == 0) break;
-                sha.TransformBlock(buffer, 0, read, null, 0);
-                totalRead += read;
-            }
-
-            sha.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
-            hash = sha.Hash!;
-        }
+        /*
+         * A detached CMS signature must be computed over the signed byte ranges themselves; SignedCms does
+         * the hashing. Passing a pre-computed hash as the content made it sign the hash of the hash, which
+         * every validator rejects.
+         */
+        var signedContent = new byte[part1Length + part2Length];
+        _outputStream.Seek(0, SeekOrigin.Begin);
+        _outputStream.ReadExactly(signedContent, 0, part1Length);
+        _outputStream.Seek(part2Start, SeekOrigin.Begin);
+        _outputStream.ReadExactly(signedContent, part1Length, part2Length);
 
         // Sign
-        var contentInfo = new ContentInfo(hash);
+        var contentInfo = new ContentInfo(signedContent);
         var signedCms = new SignedCms(contentInfo, true);
         var cmsSigner = new CmsSigner(certificate)
         {
