@@ -5,7 +5,7 @@ You can use `WaitStrategy` in `BrowserOptions` to ensure the page is fully loade
 
 ## Network Idle
 
-Wait until there are no more than 2 network connections for at least 500ms.
+Wait until there are no more than 2 network connections for at least 500ms (that is what idle means, do not confuse this with the timeout).
 
 ```csharp
 var options = new BrowserOptions
