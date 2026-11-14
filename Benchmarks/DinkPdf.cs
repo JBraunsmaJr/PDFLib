@@ -1,15 +1,16 @@
 using DinkToPdf;
+using DinkToPdf.Contracts;
 
 namespace Benchmarks;
 
 public class DinkPdf : IConverter
 {
-    private readonly BasicConverter _converter;
+    private static readonly ITools Tools = new PdfTools();
+    private static readonly BasicConverter Converter = new(Tools);
     private HtmlToPdfDocument? _doc;
 
     public DinkPdf()
     {
-        _converter = new BasicConverter(new PdfTools());
     }
 
     public Task ConvertAsync(string html)
@@ -39,7 +40,7 @@ public class DinkPdf : IConverter
                 }
             }
         };
-        _converter.Convert(doc);
+        Converter.Convert(doc);
         return Task.CompletedTask;
     }
 
