@@ -54,7 +54,29 @@ public class CdpPage : IAsyncDisposable
         }
     }
 
+    /// <summary>Number of times this page has been handed out by the browser's page pool.</summary>
+    internal int RentCount { get; set; }
+
+    /// <summary>
+    /// Navigates to a fresh about:blank document so nothing from the previous render survives.
+    /// <see cref="SetContentAsync"/> alone replaces the markup but keeps the same JavaScript global object,
+    /// so script state from one document would otherwise be visible to the next.
+    /// </summary>
+    internal async Task ResetAsync(CancellationToken cancellationToken = default)
+    {
+        using var res = await _dispatcher.SendCommandAsync("Page.navigate", new { url = "about:blank" }, _sessionId,
+            cancellationToken);
+        if (res != null && res.RootElement.TryGetProperty("errorText", out var error))
+            throw new InvalidOperationException($"Could not reset page: {error.GetString()}");
+    }
+
     private static string? _findSignatureAreasScript;
+
+    // JsonSerializerOptions caches type metadata; creating one per call throws that cache away every time
+    private static readonly JsonSerializerOptions SignatureZoneSerializerOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
 
     private string FindSignatureAreasScript
     {
@@ -113,12 +135,7 @@ public class CdpPage : IAsyncDisposable
         if (res == null || !res.RootElement.TryGetProperty("result", out var result) || !result.TryGetProperty("value", out var value))
             return new List<SignatureZone>();
         
-        var options = new JsonSerializerOptions
-        {
-            PropertyNameCaseInsensitive = true
-        };
-
-        var zones = JsonSerializer.Deserialize<List<SignatureZone>>(value.GetRawText(), options);
+        var zones = value.Deserialize<List<SignatureZone>>(SignatureZoneSerializerOptions);
         
         return zones ?? new List<SignatureZone>();
     }
@@ -134,7 +151,7 @@ public class CdpPage : IAsyncDisposable
     public async Task<List<SignatureZone>> PrintToPdfAsync(string html, Stream destinationStream, Dictionary<string, Signature>? signatureData = null,
         CancellationToken cancellationToken = default)
     {
-        await SetContentAsync(html);
+        await SetContentAsync(html, cancellationToken);
         return await PrintToPdfAsync(destinationStream, signatureData, cancellationToken);
     }
 
@@ -188,7 +205,8 @@ public class CdpPage : IAsyncDisposable
                 return zones;
             }
 
-            var scratchBuffer = ArrayPool<byte>.Shared.Rent(1024 * 1024);
+            // A 256KB read is ~350KB of base64, decoded in place
+            var scratchBuffer = ArrayPool<byte>.Shared.Rent(512 * 1024);
 
             try
             {
@@ -249,33 +267,63 @@ public class CdpPage : IAsyncDisposable
     /// Will automatically execute the <see cref="WaitStrategy"/> and wait until the page is ready.
     /// </summary>
     /// <param name="html"></param>
-    public async Task SetContentAsync(string html)
+    /// <param name="cancellationToken">The cancellation token.</param>
+    public async Task SetContentAsync(string html, CancellationToken cancellationToken = default)
     {
         if (!_pageEnabled)
         {
-            using var res = await _dispatcher.SendCommandAsync("Page.enable", null, _sessionId);
+            using var res = await _dispatcher.SendCommandAsync("Page.enable", null, _sessionId, cancellationToken);
             _pageEnabled = true;
         }
 
         if (_cachedFrameId == null)
         {
-            using var ft = await _dispatcher.SendCommandAsync("Page.getFrameTree", null, _sessionId);
+            using var ft = await _dispatcher.SendCommandAsync("Page.getFrameTree", null, _sessionId, cancellationToken);
             _cachedFrameId = ft?.RootElement.GetProperty("frameTree").GetProperty("frame").GetProperty("id").GetString();
         }
 
         if (_options.WaitStrategy.HasFlag(WaitStrategy.NetworkIdle) && !_networkEnabled)
         {
-            using var res = await _dispatcher.SendCommandAsync("Network.enable", null, _sessionId);
+            using var res = await _dispatcher.SendCommandAsync("Network.enable", null, _sessionId, cancellationToken);
             _networkEnabled = true;
         }
 
-        using var resSet = await _dispatcher.SendCommandAsync("Page.setDocumentContent", new { frameId = _cachedFrameId, html },
-            _sessionId);
+        using var resSet = await _dispatcher.SendCommandWithLargeStringAsync("Page.setDocumentContent", _sessionId,
+            "frameId", _cachedFrameId, "html", html, cancellationToken);
 
-        if (_options.WaitStrategy != 0)
+        if (_options.WaitStrategy == WaitStrategy.Load)
+        {
+            await WaitForLoadAsync(cancellationToken);
+        }
+        else if (_options.WaitStrategy != 0)
         {
             await WaitForConditionsAsync(DateTime.UtcNow,
-                _options.WaitTimeoutMs.HasValue ? TimeSpan.FromMilliseconds(_options.WaitTimeoutMs.Value) : null);
+                _options.WaitTimeoutMs.HasValue ? TimeSpan.FromMilliseconds(_options.WaitTimeoutMs.Value) : null,
+                cancellationToken);
+        }
+    }
+
+    private const string WaitForLoadScript =
+        "document.readyState === 'complete' ? true : new Promise(r => window.addEventListener('load', () => r(true), { once: true }))";
+
+    /// <summary>
+    /// Waits for the load event with a single round trip. Chromium answers the moment the page is loaded,
+    /// instead of us polling document.readyState and sleeping 50ms between attempts.
+    /// </summary>
+    private async Task WaitForLoadAsync(CancellationToken cancellationToken)
+    {
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        if (_options.WaitTimeoutMs.HasValue) timeoutCts.CancelAfter(_options.WaitTimeoutMs.Value);
+
+        try
+        {
+            using var res = await _dispatcher.SendCommandAsync("Runtime.evaluate",
+                new { expression = WaitForLoadScript, awaitPromise = true, returnByValue = true },
+                _sessionId, timeoutCts.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            // WaitTimeoutMs elapsed: render what we have, same as the polling strategies do
         }
     }
 
@@ -322,7 +370,7 @@ public class CdpPage : IAsyncDisposable
         return false;
     }
     
-    private async Task WaitForConditionsAsync(DateTime startTime, TimeSpan? timeout)
+    private async Task WaitForConditionsAsync(DateTime startTime, TimeSpan? timeout, CancellationToken cancellationToken)
     {
         var activeRequests = new ConcurrentDictionary<string, byte>();
         Action<JsonElement>? requestStarted = null;
@@ -344,9 +392,10 @@ public class CdpPage : IAsyncDisposable
                     activeRequests.TryRemove(id, out _);
                 }
             };
-            _dispatcher.On("Network.requestWillBeSent", requestStarted);
-            _dispatcher.On("Network.loadingFinished", requestFinished);
-            _dispatcher.On("Network.loadingFailed", requestFinished);
+            // Scoped to this page's session: otherwise concurrent renders count each other's requests
+            _dispatcher.On("Network.requestWillBeSent", _sessionId, requestStarted);
+            _dispatcher.On("Network.loadingFinished", _sessionId, requestFinished);
+            _dispatcher.On("Network.loadingFailed", _sessionId, requestFinished);
         }
 
         try
@@ -357,7 +406,7 @@ public class CdpPage : IAsyncDisposable
                 // Check Load strategy
                 if (_options.WaitStrategy.HasFlag(WaitStrategy.Load))
                 {
-                    using var readyStateRes = await _dispatcher.SendCommandAsync("Runtime.evaluate", new { expression = "document.readyState" }, _sessionId);
+                    using var readyStateRes = await _dispatcher.SendCommandAsync("Runtime.evaluate", new { expression = "document.readyState" }, _sessionId, cancellationToken);
                     if (readyStateRes != null && readyStateRes.RootElement.TryGetProperty("result"u8, out var result) && result.TryGetProperty("value"u8, out var value))
                     {
                         if (value.ValueEquals("complete"u8)) return;
@@ -388,7 +437,7 @@ public class CdpPage : IAsyncDisposable
                 // Check JavascriptVariable strategy
                 if (_options.WaitStrategy.HasFlag(WaitStrategy.JavascriptVariable) && !string.IsNullOrEmpty(_options.WaitVariable))
                 {
-                    using var res = await _dispatcher.SendCommandAsync("Runtime.evaluate", new { expression = _options.WaitVariable }, _sessionId);
+                    using var res = await _dispatcher.SendCommandAsync("Runtime.evaluate", new { expression = _options.WaitVariable }, _sessionId, cancellationToken);
                     if (res != null && res.RootElement.TryGetProperty("result"u8, out var result) && result.TryGetProperty("value"u8, out var value))
                     {
                         var match = value.ValueKind switch
@@ -403,7 +452,7 @@ public class CdpPage : IAsyncDisposable
                     }
                 }
 
-                await Task.Delay(50);
+                await Task.Delay(50, cancellationToken);
             }
         }
         finally
@@ -446,91 +495,106 @@ public class CdpPage : IAsyncDisposable
 
         public async ValueTask Handle(ReadOnlySequence<byte> message)
         {
+            byte[]? rented = null;
             try
             {
-                var reader = new Utf8JsonReader(message);
-                var eof = false;
-                var base64Encoded = false;
-                var hasError = false;
-                string? errorText = null;
-                ReadOnlySequence<byte> data = default;
-
-                while (reader.Read())
+                /*
+                 * Parse synchronously (Utf8JsonReader can't live across an await) and copy the payload
+                 * straight into a pooled buffer. Only the stream write below is asynchronous.
+                 */
+                var parsed = Parse(message, ref rented);
+                if (parsed.Error != null)
                 {
-                    if (reader.TokenType != JsonTokenType.PropertyName) continue;
-
-                    if (reader.ValueTextEquals("result"u8))
-                    {
-                        reader.Read();
-                        while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
-                        {
-                            if (reader.TokenType != JsonTokenType.PropertyName) continue;
-
-                            if (reader.ValueTextEquals("data"u8))
-                            {
-                                reader.Read();
-                                if (reader.HasValueSequence)
-                                {
-                                    data = reader.ValueSequence;
-                                }
-                                else
-                                {
-                                    /*
-                                     * TODO: Investigate ValueSequence
-                                     * If a single segment, reader.ValueSpan contains the data.
-                                     * To avoid Utf8JsonReader limitations, we can't easily get a ReadOnlySequence
-                                     * from a Span without a copy if we want to avoid pinning.
-                                     * Since we're in a high-performance path, we'll use `ToArray` for now.
-                                     * We know that for large data, it will likely be a ValueSequence.
-                                     */
-                                    data = new ReadOnlySequence<byte>(reader.ValueSpan.ToArray());
-                                }
-                            }
-                            else if (reader.ValueTextEquals("eof"u8))
-                            {
-                                reader.Read();
-                                eof = reader.GetBoolean();
-                            }
-                            else if (reader.ValueTextEquals("base64Encoded"u8))
-                            {
-                                reader.Read();
-                                base64Encoded = reader.GetBoolean();
-                            }
-                            else
-                            {
-                                reader.Skip();
-                            }
-                        }
-                    }
-                    else if (reader.ValueTextEquals("error"u8))
-                    {
-                        reader.Read();
-                        hasError = true;
-                        errorText = reader.GetString();
-                    }
-                    else
-                    {
-                        reader.Skip();
-                    }
-                }
-
-                if (hasError)
-                {
-                    _tcs.TrySetException(new Exception($"CDP Error: {errorText}"));
+                    _tcs.TrySetException(new Exception($"CDP Error: {parsed.Error}"));
                     return;
                 }
 
-                if (!data.IsEmpty)
-                {
-                    await ProcessDataAsync(data, base64Encoded);
-                }
-                
-                _tcs.TrySetResult(eof);
+                if (parsed.Length > 0)
+                    await _destinationStream.WriteAsync((rented ?? _scratchBuffer).AsMemory(0, parsed.Length));
+
+                _tcs.TrySetResult(parsed.Eof);
             }
             catch (Exception ex)
             {
                 _tcs.TrySetException(ex);
             }
+            finally
+            {
+                if (rented != null) ArrayPool<byte>.Shared.Return(rented);
+            }
+        }
+
+        private (int Length, bool Eof, string? Error) Parse(ReadOnlySequence<byte> message, ref byte[]? rented)
+        {
+            var reader = new Utf8JsonReader(message);
+            var eof = false;
+            var base64Encoded = false;
+            var length = 0;
+            string? error = null;
+
+            while (reader.Read())
+            {
+                if (reader.TokenType != JsonTokenType.PropertyName) continue;
+
+                if (reader.ValueTextEquals("result"u8))
+                {
+                    reader.Read();
+                    while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
+                    {
+                        if (reader.TokenType != JsonTokenType.PropertyName) continue;
+
+                        if (reader.ValueTextEquals("data"u8))
+                        {
+                            reader.Read();
+                            var encodedLength = reader.HasValueSequence
+                                ? checked((int)reader.ValueSequence.Length)
+                                : reader.ValueSpan.Length;
+
+                            var target = _scratchBuffer;
+                            if (encodedLength > target.Length)
+                                target = rented = ArrayPool<byte>.Shared.Rent(encodedLength);
+
+                            // Handles multi-segment values and JSON escapes without an intermediate array
+                            length = reader.CopyString(target);
+                        }
+                        else if (reader.ValueTextEquals("eof"u8))
+                        {
+                            reader.Read();
+                            eof = reader.GetBoolean();
+                        }
+                        else if (reader.ValueTextEquals("base64Encoded"u8))
+                        {
+                            reader.Read();
+                            base64Encoded = reader.GetBoolean();
+                        }
+                        else
+                        {
+                            reader.Skip();
+                        }
+                    }
+                }
+                else if (reader.ValueTextEquals("error"u8))
+                {
+                    // "error" is an object ({code, message}); GetString() on it used to throw
+                    reader.Read();
+                    using var doc = JsonDocument.ParseValue(ref reader);
+                    error = doc.RootElement.GetRawText();
+                }
+                else
+                {
+                    reader.Skip();
+                }
+            }
+
+            if (error == null && base64Encoded && length > 0)
+            {
+                var buffer = (rented ?? _scratchBuffer).AsSpan(0, length);
+                // A failed decode used to be dropped silently, producing a truncated/corrupt PDF
+                if (Base64.DecodeFromUtf8InPlace(buffer, out length) != OperationStatus.Done)
+                    throw new InvalidDataException("Chromium returned PDF data that is not valid base64.");
+            }
+
+            return (length, eof, error);
         }
 
         public void SetException(Exception ex)
@@ -545,70 +609,6 @@ public class CdpPage : IAsyncDisposable
         {
             if (_tcs.Task.IsCompleted)
                 _tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        }
-        
-        private const int PayloadBufferThreshold = 512 * 1024;
-        
-        private async Task ProcessDataAsync(ReadOnlySequence<byte> data, bool isBase64)
-        {
-            if (isBase64)
-            {
-                var payloadLength = (int)data.Length;
-                
-                if (payloadLength > PayloadBufferThreshold)
-                {
-                    var input = ArrayPool<byte>.Shared.Rent(payloadLength);
-                    var output = ArrayPool<byte>.Shared.Rent(Base64.GetMaxDecodedFromUtf8Length(payloadLength));
-                    try
-                    {
-                        data.CopyTo(input);
-                        
-                        var status = Base64.DecodeFromUtf8(input.AsSpan(0, payloadLength), output, out _, out var written);
-                        if (status == OperationStatus.Done)
-                        {
-                            await _destinationStream.WriteAsync(output.AsMemory(0, written));
-                        }
-                    }
-                    finally
-                    {
-                        ArrayPool<byte>.Shared.Return(input);
-                        ArrayPool<byte>.Shared.Return(output);
-                    }
-
-                    return;
-                }
-
-                data.CopyTo(_scratchBuffer);
-                
-                var status2 = Base64.DecodeFromUtf8(_scratchBuffer.AsSpan(0, payloadLength), _scratchBuffer.AsSpan(512 * 1024), out _, out var written2);
-
-                if (status2 == OperationStatus.Done)
-                {
-                    await _destinationStream.WriteAsync(_scratchBuffer.AsMemory(512 * 1024, written2));
-                }
-            }
-            else
-            {
-                if (data.IsSingleSegment)
-                {
-                    await _destinationStream.WriteAsync(data.First);
-                }
-                else
-                {
-                    if (data.Length <= _scratchBuffer.Length)
-                    {
-                        data.CopyTo(_scratchBuffer);
-                        await _destinationStream.WriteAsync(_scratchBuffer.AsMemory(0, (int)data.Length));
-                    }
-                    else
-                    {
-                        foreach (var segment in data)
-                        {
-                            await _destinationStream.WriteAsync(segment);
-                        }
-                    }
-                }
-            }
         }
     }
 }

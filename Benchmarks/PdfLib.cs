@@ -20,6 +20,8 @@ public class PdfLib : IConverter
         var page = await _browser.CreatePageAsync();
         try
         {
+            _fileStream.Position = 0;
+            _fileStream.SetLength(0);
             await page.SetContentAsync(html);
             await page.PrintToPdfAsync(_fileStream);
             await _fileStream.FlushAsync();

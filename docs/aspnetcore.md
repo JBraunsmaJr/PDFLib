@@ -68,7 +68,7 @@ builder.Services.AddPdfService();
 ```csharp
 builder.Services.AddPdfService(options => 
 {
-    MaxConcurrentRenderers = 10;
+    options.MaxConcurrentRenders = 10;
 });
 ```
 
